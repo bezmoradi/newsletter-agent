@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the newsletter agent once a day
+
+[Timer]
+OnCalendar=*-*-* 07:00:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

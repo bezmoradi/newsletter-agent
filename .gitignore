@@ -1,0 +1,13 @@
+.env
+*.env
+secrets/
+KNACKPACK-FINDINGS*.md
+*.local
+*.local.*
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+dist/
+build/
+*.egg-info/

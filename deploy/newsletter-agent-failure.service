@@ -1,0 +1,8 @@
+[Unit]
+Description=Newsletter agent: email a notice that the scheduled run died
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=/usr/bin/docker compose run --rm -T --no-deps agent notify-failure
+TimeoutStartSec=5min

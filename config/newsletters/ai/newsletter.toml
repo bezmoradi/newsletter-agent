@@ -1,0 +1,169 @@
+name = 'AI news'
+
+[[sources]]
+key = 'anthropic'
+name = 'Anthropic'
+type = 'sitemap'
+url = 'https://www.anthropic.com/sitemap.xml'
+include = ['^/news/', '^/research/', '^/engineering/']
+
+[[sources]]
+key = 'claude-articles'
+name = 'Claude articles'
+type = 'sitemap'
+url = 'https://claude.com/sitemap.xml'
+include = ['^/resources/articles/']
+
+[[sources]]
+key = 'openai-news'
+name = 'OpenAI'
+type = 'feed'
+url = 'https://openai.com/news/rss.xml'
+
+[[sources]]
+key = 'yt-anthropic'
+name = 'Anthropic on YouTube'
+type = 'youtube'
+channel_id = 'UCrDwWp7EBBv4NwvScIpBDOA'
+
+[[sources]]
+key = 'yt-claude'
+name = 'Claude on YouTube'
+type = 'youtube'
+channel_id = 'UCV03SRZXJEz-hchIAogeJOg'
+
+[[sources]]
+key = 'yt-openai'
+name = 'OpenAI on YouTube'
+type = 'youtube'
+channel_id = 'UCXZCJLdBC09xxGZ6gcdrc6A'
+
+[[sources]]
+key = 'yt-ai-engineer'
+name = 'AI Engineer on YouTube'
+type = 'youtube'
+channel_id = 'UCLKPca3kwwd-B59HNr-_lvA'
+
+[[sources]]
+key = 'yt-latent-space'
+name = 'Latent Space on YouTube'
+type = 'youtube'
+channel_id = 'UCxBcwypKK-W3GHd_RZ9FZrQ'
+
+[[sources]]
+key = 'youtube-search'
+name = 'YouTube topic search'
+type = 'youtube_search'
+queries = [
+    'harness engineering',
+    'software factory',
+    'AI skills',
+    'agent skills',
+    'Claude Code',
+    'context engineering',
+    'coding agents',
+]
+
+[[sources]]
+key = 'web-search'
+name = 'Web search'
+type = 'web_search'
+queries = [
+    'harness engineering',
+    'software factory',
+    'AI skills',
+    'agent skills',
+    'Claude Code',
+    'context engineering',
+    'coding agents',
+]
+
+[[sources]]
+key = 'simon-willison'
+name = 'Simon Willison'
+type = 'feed'
+url = 'https://simonwillison.net/atom/everything/'
+
+[[sources]]
+key = 'latent-space'
+name = 'Latent Space'
+type = 'feed'
+url = 'https://www.latent.space/feed'
+
+[[sources]]
+key = 'hamel'
+name = 'Hamel Husain'
+type = 'feed'
+url = 'https://hamel.dev/index.xml'
+
+[[sources]]
+key = 'eugene-yan'
+name = 'Eugene Yan'
+type = 'feed'
+url = 'https://eugeneyan.com/rss/'
+
+[[sources]]
+key = 'martin-fowler'
+name = 'Martin Fowler'
+type = 'feed'
+url = 'https://martinfowler.com/feed.atom'
+
+[[sources]]
+key = 'addy-osmani'
+name = 'Addy Osmani'
+type = 'feed'
+url = 'https://addyosmani.com/rss.xml'
+
+[[sources]]
+key = 'pragmatic-engineer'
+name = 'The Pragmatic Engineer'
+type = 'feed'
+url = 'https://newsletter.pragmaticengineer.com/feed'
+
+[[sources]]
+key = 'lilian-weng'
+name = 'Lilian Weng'
+type = 'feed'
+url = 'https://lilianweng.github.io/index.xml'
+
+[[sources]]
+key = 'chip-huyen'
+name = 'Chip Huyen'
+type = 'feed'
+url = 'https://huyenchip.com/feed.xml'
+
+[[sources]]
+key = 'armin-ronacher'
+name = 'Armin Ronacher'
+type = 'feed'
+url = 'https://lucumr.pocoo.org/feed.atom'
+
+[[sources]]
+key = 'mitchell-hashimoto'
+name = 'Mitchell Hashimoto'
+type = 'feed'
+url = 'https://mitchellh.com/feed.xml'
+
+[[sources]]
+key = 'geoffrey-huntley'
+name = 'Geoffrey Huntley'
+type = 'feed'
+url = 'https://ghuntley.com/rss/'
+
+[[sources]]
+key = 'harper-reed'
+name = 'Harper Reed'
+type = 'feed'
+url = 'https://harper.blog/index.xml'
+
+[[sources]]
+key = 'dan-shapiro'
+name = 'Dan Shapiro'
+type = 'feed'
+url = 'https://www.danshapiro.com/blog/feed/'
+
+[[sources]]
+key = 'steve-yegge'
+name = 'Steve Yegge'
+type = 'feed'
+url = 'https://steve-yegge.medium.com/feed'

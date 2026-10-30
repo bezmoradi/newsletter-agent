@@ -1,0 +1,32 @@
+name: Pull requests
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-hygiene:
+    name: PR hygiene
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require a linked issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          issues=$(gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json closingIssuesReferences --jq '.closingIssuesReferences[].url')
+          if [ -z "$issues" ]; then
+            echo "::error title=No linked issue::Link an issue to this pull request. Write \"Closes #<issue number>\" in its description, which runs this check again, or link one under Development in the sidebar and re-run this job."
+            exit 1
+          fi
+          echo "Linked issues:"
+          echo "$issues"

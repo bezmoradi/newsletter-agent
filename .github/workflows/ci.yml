@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  checks:
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - check: No comments
+            run: python3 scripts/check_no_comments.py
+          - check: No tests
+            run: python3 scripts/check_no_tests.py
+          - check: Lint
+            run: uv run --locked --only-group dev ruff check . && uv run --locked --only-group dev ruff format --check .
+          - check: Types
+            run: uv run --locked mypy
+          - check: Dead code
+            run: uv run --locked --only-group dev vulture
+          - check: Dependencies
+            run: uv run --locked deptry .
+          - check: Duplicates
+            run: uv run --locked --only-group dev pylint --disable=all --enable=duplicate-code src scripts
+          - check: Spelling
+            run: uv run --locked --only-group dev typos
+          - check: Migrations
+            run: uv run --locked --only-group dev squawk src/newsletter_agent/migrations/*.sql
+          - check: Large files
+            run: git ls-files -z | xargs -0 uv run --locked --only-group dev check-added-large-files --enforce-all
+          - check: Vulnerabilities
+            run: uv audit --locked --preview-features audit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: "0.11.2"
+          enable-cache: false
+      - run: ${{ matrix.run }}
+
+  workflows:
+    name: Workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e
+        with:
+          version: "0.11.2"
+          enable-cache: false
+      - run: docker run --rm --network none -v "$PWD:/repo:ro" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: uv run --locked --only-group dev zizmor .github/workflows
+
+  links:
+    name: Links
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: git ls-files -z '*.md' | xargs -0 docker run --rm --network none -v "$PWD:/input:ro" -w /input lycheeverse/lychee@sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d --offline --include-fragments --no-progress
+
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks
+        env:
+          VERSION: 8.30.1
+          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tar.gz" "https://github.com/gitleaks/gitleaks/releases/download/v$VERSION/gitleaks_${VERSION}_linux_x64.tar.gz"
+          echo "$SHA256  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - run: |
+          "$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --log-opts="--full-history --diff-filter=tuxdb HEAD" --redact --no-banner --verbose .
