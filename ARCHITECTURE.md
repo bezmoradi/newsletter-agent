@@ -9,6 +9,7 @@ Status on 2026-10-30:
 - Web search through Claude's own search tool (REQ-28, REQ-29) is built and was checked on the Mac only.
 - A second review by six reviewers found 28 issues; the fixes are in and were checked on the Mac (section 14). Logs on the Pi are accepted (REQ-30).
 - A third review, of the repository about to be published, found 30 issues, and every one is fixed (REQ-54, section 17).
+- A fourth review, of the published code base, by seven reviewers with an adjudicator for the serious findings, found 32 issues. You decided its open questions (REQ-57 to REQ-60 and REQ-62, with one deferred in section 16), the fixes are in, and they were checked on the Mac and the Pi (REQ-61, sections 14 and 17). The same pull request makes Claude review only review and block on every problem it finds (REQ-63, REQ-64).
 - Learning your taste from ratings (REQ-32) is built, and was checked on the Mac against a stand-in for Gmail, not against Gmail itself (section 14).
 - The project was renamed from `ai-news-agent` to `newsletter-agent` (REQ-33): the repository, the package `newsletter_agent`, the command, and every name derived from them.
 - A GitHub Actions pipeline with 17 checks (REQ-34 to REQ-45, and the Workflow guard) is written. The first 16 passed on GitHub in the private repository (section 14).
@@ -40,7 +41,7 @@ You are the only operator: only you configure and run it, and only you get its f
 
 ## 2. Requirements
 
-These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21 and REQ-46 were replaced by REQ-06, REQ-11, REQ-29 and REQ-50.
+These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21, REQ-43 and REQ-46 were replaced by REQ-06, REQ-11, REQ-29, REQ-59 and REQ-50.
 
 | ID | Requirement | Status (2026-10-30) |
 |---|---|---|
@@ -81,9 +82,8 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-40 | Ruff's banned-import rule enforces that one module owns each outside boundary: Claude, Postgres, HTTP, YouTube transcripts and Gmail (section 12) | Checked on the Mac: a planted `psycopg` import elsewhere was caught; passed on GitHub |
 | REQ-41 | Every tool from your list that helps this project is added to the pipeline | Eleven added, the rest covered or declined with a reason (section 12); checked on the Mac, and passed on GitHub |
 | REQ-42 | Every change starts with an issue, then a pull request that links it; nothing is pushed to `main` directly. `CLAUDE.md` says so | Written in `CLAUDE.md`; PR hygiene checks the link, and the rule on `main` (REQ-50) requires the pull request |
-| REQ-43 | Claude's two GitHub app workflows follow the pipeline's rules: no comments, actions pinned by commit, checkout without saved credentials; zizmor's `issue_comment` finding accepted for `claude.yml` only | Every check passed on GitHub |
 | REQ-44 | A pipeline check keeps a pull request from being merged unless Claude's review approves it | Claude review is a required check in the rule on `main` (REQ-50) |
-| REQ-45 | Claude approves when its review posts no findings. When Claude is wrong or can't review, you add the `review-override` label and the check passes | Its decision step was tried with four verdicts on the Mac. On GitHub it has so far failed only with "no review", on pull requests that change its own workflow, as designed |
+| REQ-45 | Claude approves when its review posts no findings. When Claude is wrong or can't review, you add the `review-override` label and the check passes, for the commit you labeled only | Its decision step was tried with four verdicts on the Mac. On GitHub it has so far failed only with "no review", on pull requests that change its own workflow, as designed |
 | REQ-47 | Local git hooks run the fast checks on every commit, and Types, Duplicates, Vulnerabilities and Secrets on every push | Installed and run on the Mac |
 | REQ-49 | Claude's approval is mandatory before a merge | Enforced by the rule on `main` (REQ-50); only your `review-override` label passes Claude review without Claude |
 | REQ-50 | The repository is public, so GitHub's free plan allows a rule on `main` that requires a pull request and every check to pass before a merge. Replaces REQ-46, under which every check was only a warning | Section 12, "The rule on `main`" |
@@ -91,6 +91,14 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-52 | The repository is licensed under MIT | `LICENSE` |
 | REQ-53 | Git ignores every file with `.local` in its name; the Pi's private details live in such a file, `CLAUDE.local.md`, which Claude Code loads beside `CLAUDE.md` | `.gitignore`; `git check-ignore` matched `CLAUDE.local.md`, `foo.local` and `x.local.json` |
 | REQ-54 | Every finding of the review before publishing is fixed, however minor; nothing is left accepted, deferred or unfixed | 30 issues fixed (section 17), checked in the rebuilt image against a fresh Postgres and by script (section 14) |
+| REQ-57 | The agent may fetch any public https site and path its sources link to. An allowlist of domains would break REQ-03 and REQ-28, so you accepted that risk | Accepted risk (section 16); only port 443 is allowed |
+| REQ-58 | The database setup should be one that other users of this project can set up without issues, as well as you on the Pi | Password logins with generated passwords, TLS 1.3 only, and TCP logins for the agent's role only (section 12); checked on the Mac and the Pi; the remaining risk is accepted (REQ-62) |
+| REQ-59 | Claude's two GitHub app workflows follow the pipeline's rules: no comments, actions pinned by commit, checkout without saved credentials; zizmor's `dangerous-triggers` finding is accepted for `claude.yml` and for `workflow-guard.yml`, which must run on `pull_request_target` to judge a pull request from `main`'s copy. Replaces REQ-43 | Every check passed on GitHub; zizmor passes with both exemptions |
+| REQ-60 | Deploys to the Pi come only from a reviewed `main` commit, and the deployed commit is recorded | README, "Deploy on the Pi"; `check`, each run's first log line and failure emails show the revision |
+| REQ-61 | Every finding of the fourth review is fixed, on one branch from `main`, for issue #4 | Section 17 |
+| REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
+| REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 10 planted violations (section 12) |
+| REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12); not yet run on GitHub |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
 
@@ -171,8 +179,8 @@ flowchart TD
 |---|---|---|---|
 | read ratings | when a newsletter goes to `SMTP_USERNAME`, the headers of rating emails in its Gmail Sent folder from the last 30 days | `feedback` | unchanged |
 | collect | every newsletter's enabled sources, from `config/newsletters/*/newsletter.toml`. A `web_search` source asks Claude, with only `WebSearch`, for recent links | new `items`; the source's runtime state | `new`, or `baseline` on a source's first sight (section 9) |
-| enrich | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `new`, newest first; an item with no publication date counts from when it was first stored | `item_content`, or the reason the fetch failed | `enriched` or `enrich_failed` |
-| assess | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `enriched` or `enrich_failed`, against its profile and recent ratings | `assessments` | `assessed`, or `assess_failed` (terminal) |
+| enrich | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `new` from its configured, enabled sources, taken one source at a time: each source's newest, then each source's second newest, and so on. An item with no publication date counts from when it was first stored | `item_content`, or the reason the fetch failed | `enriched` or `enrich_failed` |
+| assess | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `enriched` or `enrich_failed` from its configured, enabled sources, taken one source at a time like enrich, against its profile and recent ratings | `assessments` | `assessed`, or `assess_failed` (terminal) |
 | digest | per newsletter, assessed items at or above its threshold with no `digest_items` row | one `digests` row per newsletter with candidates, and its `digest_items` | unchanged |
 | deliver | digests with `sent_at` null, each to its newsletter's recipient | `sent_at` or `send_error` | unchanged |
 
@@ -218,17 +226,17 @@ flowchart LR
 
   Experiment E3 showed what `tools=[]` does: the session offers only `StructuredOutput`, structured output still works, and input drops from 11,962 tokens to 1,050 per call. A deny-list of 8 tools still left 19 tools available. Experiment E4 showed that `tools=["WebSearch"]` offers exactly `StructuredOutput` and `WebSearch`, and that the search works with the OAuth token.
 - **Fail closed.** `llm.py` reads the `init` message and raises `ClaudeAuthError` unless its tool list is exactly `["StructuredOutput"]`, or exactly `StructuredOutput` and `WebSearch` for a web search session. A session that sends no `init` message fails the same way. If an SDK upgrade adds tools, the run stops; it doesn't carry on with more tools than intended.
-- **No secrets in reach.** The SDK starts Claude Code with the whole process environment. So `settings.take_secrets` removes these variables from `os.environ` before anything else runs: `DATABASE_URL`, `SMTP_USERNAME`, `SMTP_APP_PASSWORD`, `YOUTUBE_API_KEY`, `POSTGRES_PASSWORD`, and every `DIGEST_TO_<KEY>` recipient address. Only `CLAUDE_CODE_OAUTH_TOKEN` stays, because Claude Code needs it. `WebSearch` can't read the environment or files, so the search session can't put the token into a query. Removing a variable from `os.environ` doesn't remove it from `/proc/<pid>/environ`, so this protection rests on Claude having no tool that reads files.
-- **Fetched text is fenced.** Each item goes into a prompt inside `<item n="…">` tags, and the titles of items you rated go inside a `<feedback>` block. `text.fence` escapes any `<item`, `</item`, `<feedback` or `</feedback` inside that text. The prompt tells Claude that both are material to judge, never instructions. The search prompt says the same of search results. `prompts.render` fills a template's placeholders in one pass, so a title containing `{{items}}` can't pull in other text.
+- **No secrets in reach.** The SDK starts Claude Code with the whole process environment. So `settings.take_secrets` removes these variables from `os.environ` before anything else runs: `DATABASE_URL`, `SMTP_USERNAME`, `SMTP_APP_PASSWORD`, `YOUTUBE_API_KEY`, `POSTGRES_PASSWORD`, `AGENT_DB_PASSWORD`, and every `DIGEST_TO_<KEY>` recipient address. Only `CLAUDE_CODE_OAUTH_TOKEN` stays, because Claude Code needs it. `WebSearch` can't read the environment or files, so the search session can't put the token into a query. Removing a variable from `os.environ` doesn't remove it from `/proc/<pid>/environ`, so this protection rests on Claude having no tool that reads files.
+- **Fetched text is fenced.** Each item goes into a prompt inside `<item n="…">` tags, and the titles of items you rated go inside a `<feedback>` block. `text.fence` escapes any `<item`, `</item`, `<feedback` or `</feedback` inside that text, also with spaces or zero-width characters inside the tag. The prompt tells Claude that both are material to judge, never instructions. The search prompt says the same of search results. `prompts.render` fills a template's placeholders in one pass, so a title containing `{{items}}` can't pull in other text.
 - **Claude never sees database IDs.** Items are numbered 1 to N within a batch. Code drops any number outside that range, and any number that appears twice.
-- **Links from a search are checked before they are stored.** A link Claude returns is kept only if it is a valid `http` or `https` URL, at most 2,000 characters, has no user name or password, and its host resolves only to public addresses (`http.check_url`). The enrich step checks the address again when it fetches the page.
+- **Links from a search are checked before they are stored.** A link Claude returns is kept only if it is a valid `http` or `https` URL, at most 2,000 characters, has no user name or password, names no port other than 443 once it is turned into https, and its host resolves only to public addresses (`http.check_url`). The enrich step checks the address again when it fetches the page.
 - **Code writes the email.**
-  - `mail.render_digest` passes every text it shows through `text.defang`: titles (a web search item's title comes from Claude), summaries, score reasons and the intro. `defang` replaces URLs with "[link removed]" and breaks up every dot of any domain-like word, so `www.evil.click` becomes `www[.]evil[.]click`. The cost is that names such as `Node.js` show as `Node[.]js`.
+  - `mail.render_digest` passes every text it shows through `text.defang`: titles (a web search item's title comes from Claude), summaries, score reasons and the intro. `defang` replaces URLs with "[link removed]" and breaks up every dot of any domain-like word and every IPv4 address, so `www.evil.click` becomes `www[.]evil[.]click`. Look-alike dots, such as `。` and `․`, count as dots. The cost is that names such as `Node.js` show as `Node[.]js`.
   - Every value in the HTML goes through `html.escape`.
-  - Links come only from stored item URLs, only `http` and `https` ones, and each link shows its domain. For a web search item, that stored URL came from Claude's search output and passed the checks above.
-  - The one other kind of link is the pair of rating links on each item of a digest addressed to you: `mailto:` links that code builds from `SMTP_USERNAME` and the item's database ID (section 7, "Learning your taste"). No text from Claude or a page goes into them.
+  - Links come only from stored item URLs, only `http` and `https` ones, and each link shows its domain in ASCII, so an international look-alike of a familiar domain shows in its `xn--` form. For a web search item, that stored URL came from Claude's search output and passed the checks above.
+  - The one other kind of link is the pair of rating links on each item of a digest addressed to you: `mailto:` links that code builds from `SMTP_USERNAME`, the item's database ID and the database's feedback token (section 7, "Learning your taste"). No text from Claude or a page goes into them.
 - **Consequences.**
-  - Prompt injection in a fetched page can at most skew a score or a summary. It can't make Claude fetch, run or send anything.
+  - Prompt injection in a fetched page can at most skew a score or a summary, or make its own item fail scoring until it is set aside as `assess_failed` after 3 runs (section 7, steps.py). It can't make Claude fetch, run or send anything.
   - Prompt injection in a search result reaches a Claude that can search. At worst it can make Claude run extra searches, which use plan limits but are capped by `max_turns`; send words from the prompt to the search engine, where the prompt holds only the search term; or return a link the attacker chose. Such a link must still be on a public host. Its page is fetched under the 90-second deadline, so a deliberately slow server can't stall the run, and the page is scored against the profile like any other. In the injection test (section 14), Haiku ignored planted instructions.
   - Any other new capability has to be written as code.
 - **Revisit when:**
@@ -244,12 +252,16 @@ newsletter-agent/
   pyproject.toml, uv.lock     dependencies, pinned by uv
   Dockerfile, compose.yaml    the image and the Compose project
   deploy/                     systemd units: the run, the failure notice, the daily timer
-  db/                         init-agent.sql (the agent's role) and pg_hba.conf (TLS only)
+  db/                         init-agent.sql (the agent's role) and pg_hba.conf (TLS only,
+                              and over TCP only the agent's role)
   .github/workflows/          the pipeline: pull-requests.yml (PR hygiene) and ci.yml;
                               claude.yml and claude-code-review.yml for Claude's GitHub app;
-                              workflow-guard.yml for changes under .github/
-  .github/zizmor.yml          the one workflow finding accepted on purpose
-  scripts/                    check_no_comments.py and check_no_tests.py, sharing repository.py
+                              workflow-guard.yml for changes to the files that define checks;
+                              audit.yml, the weekly vulnerability audit
+  .github/zizmor.yml          the workflow finding accepted on purpose, for claude.yml and
+                              workflow-guard.yml (REQ-59)
+  scripts/                    check_no_comments.py and check_no_tests.py, sharing repository.py;
+                              check_review_workflow.py, which keeps Claude review read-only
   .pre-commit-config.yaml     the same checks, on each commit and push
   .gitleaks.toml              the secret scan's extra rule for the Claude token
   .squawk.toml                the migration rules that don't fit this project, switched off
@@ -266,22 +278,22 @@ newsletter-agent/
     store.py                  all SQL; the only psycopg import
     llm.py                    the only claude_agent_sdk import; structured() and its errors
     http.py                   urllib: timeouts, size cap, address checks, manual redirects
-    mail.py                   Gmail: render_digest(), render_failure(), send(), check_login(),
-                              read_ratings() over IMAP
+    mail.py                   Gmail: render_digest(), feedback_link(), render_failure(), send(),
+                              error_summary(), check_login(), read_ratings() over IMAP
     enrich.py                 article text or a YouTube transcript
     extract.py                main text and title from HTML, with html.parser
-    text.py                   plain(), defang(), fence()
-    urls.py                   canonical_url(), YouTube video IDs
+    text.py                   storable(), storable_json(), plain(), defang(), fence()
+    urls.py                   canonical_url(), domain(), YouTube video IDs
     sources/
       __init__.py             COLLECTORS: source type → collector function
-      base.py                 Candidate, SourceState, Collected
+      base.py                 Candidate, SourceState, Collected, the run deadline check
       feed.py                 RSS 1.0, RSS 2.0 and Atom, with xml.etree
       sitemap.py              sitemaps and sitemap indexes, filtered by include rules
       youtube.py              a channel's Atom feed, parsed by feed.py
       youtube_search.py       YouTube Data API search.list by topic (REQ-13)
       web_search.py           web search through Claude's WebSearch tool (REQ-28, REQ-29)
     prompts/                  load(), render(), and score_v2.md, digest_v1.md, search_v1.md
-    migrations/               0001_init.sql to 0003_feedback.sql; numbered, forward-only
+    migrations/               numbered, forward-only SQL files; a new one takes the next number
 ```
 
 ## 7. Module responsibilities
@@ -314,7 +326,7 @@ Before any network call, `load_settings` validates the whole configuration:
 - source keys must be unique within a newsletter;
 - feed and sitemap URLs must be `http` or `https`;
 - channel IDs must look like `UC` plus 22 characters;
-- `include` must be a list, and every regex in it must compile;
+- `include` must be a list, every regex in it must compile, and only `feed` and `sitemap` sources may have one, because the others ignore it;
 - all newsletters' YouTube search terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's quota belongs to the API key;
 - all newsletters' web search terms together can't exceed `WEB_SEARCH_MAX_QUERIES`, because every search uses the same plan.
 
@@ -323,8 +335,10 @@ Before any network call, `load_settings` validates the whole configuration:
 Each collector has the same signature:
 
 ```python
-type Collector = Callable[[SourceConfig, SourceState, Settings, datetime], Collected]
+type Collector = Callable[[SourceConfig, SourceState, Settings, float], Collected]
 ```
+
+The last argument is the run's deadline, a `time.monotonic()` value, so a change of the system clock can't move it. A collector that makes several requests checks it with `base.past(deadline)` before each one after the first, and raises `DeadlinePassed` when it has passed, which fails the source rather than recording a success for work it skipped.
 
 - **What collectors return.** `SourceState` carries the stored ETag, Last-Modified and time of the last success. `Collected` holds the candidates, plus the new ETag and Last-Modified values or a not-modified marker. It also has `recent_only`, which is true for web search, and `claude`, the Claude calls the collector made, whose usage the run records.
 - **Candidates.** A candidate is `Candidate(external_id, url, title, published_at, summary)`. Only `external_id` and `url` are always set.
@@ -333,16 +347,17 @@ type Collector = Callable[[SourceConfig, SourceState, Settings, datetime], Colle
   - Dates are read as ISO 8601 or RFC 822 by `feed.parse_date`, which YouTube search and web search use too.
   - Atom links prefer `rel="alternate"`.
   - Malformed XML fails the source, and the failure is recorded.
-- **`sitemap.py`** keeps the URLs whose path matches an `include` rule. It follows a sitemap index one level deep, at most 10 child sitemaps, on the same host only.
+- **`sitemap.py`** keeps the URLs whose path matches an `include` rule. It follows a sitemap index one level deep, at most 10 child sitemaps, on the same host only, and checks the run deadline before each child.
 - **`youtube.py`** fetches `https://www.youtube.com/feeds/videos.xml?channel_id=…` and keeps each video's ID and watch URL.
 - **`youtube_search.py`** makes one `search.list` call per term, with `type=video`, `relevanceLanguage=en`, `order=relevance` and `maxResults=25`.
-  - `publishedAfter` is the source's last successful collection, or 48 hours ago on the first run.
+  - `publishedAfter` is 12 hours before the source's last successful collection, because YouTube indexes some videos hours after they are published, or 48 hours ago on the first run.
+  - It checks the run deadline before each call, and a passed deadline fails the source.
   - The key goes in the `X-Goog-Api-Key` header, never in the URL.
   - Any failed call fails the whole source, so `publishedAfter` doesn't move forward past results it missed.
 - **`web_search.py`** runs one Claude session per term, with only `WebSearch` (section 5), using the `search_v1` prompt and `SEARCH_MODEL`.
   - It asks for pages from roughly the last N days, where N is the days since the source's last success, at least 1 and at most 7, or 2 on the first run. Search engines have no exact date filter here, so the window is a request to Claude, not a guarantee.
   - It keeps at most 10 links per term, after the link checks in section 5. The item's ID is its canonical URL. Claude's date is kept when it parses and isn't in the future; most results have none.
-  - A term whose output is invalid is skipped, and the others go on. A sign-in or availability failure fails the source and stops Claude for the run (section 10); the usage of terms that finished before it isn't recorded.
+  - A term whose output is invalid is skipped, and the others go on. When every term's output is invalid, the source fails with `ClaudeOutputError`, so it counts as failing and its search window doesn't move forward; the usage of those sessions is still recorded. A sign-in or availability failure fails the source and stops Claude for the run (section 10); the usage of terms that finished before it isn't recorded.
   - `check` runs one search, for "artificial intelligence", when any newsletter has a `web_search` source.
 
 `steps.collect` calls each collector, and stores its candidates, inside a `try`/`except` per source. A broken source, or one whose items can't be stored, is recorded on its row, and the other sources go on. Before storing, it skips any candidate whose URL isn't a valid `http` or `https` URL, including a malformed port, or is over 2,000 characters, so one bad entry in a feed can't fail the run.
@@ -356,7 +371,7 @@ There are two branches, chosen by source type:
   - It skips scripts, styles, navigation, headers, footers, asides and forms.
   - It prefers the text inside `<article>` or `<main>` when there are at least 500 characters of it.
   - It drops lines shorter than 25 characters.
-  - The title comes from `og:title`, or else `<title>`. This is where sitemap items get their title.
+  - The title comes from `og:title`, or else the page's first `<title>` outside the skipped parts, so an icon's `<svg><title>` isn't added to it. This is where sitemap items get their title.
 
 Stored text is capped at 100,000 characters, titles at 500, and NUL characters are removed, because Postgres can't store them. A failure is caught per item and recorded with its exception type and message, and the item becomes `enrich_failed`.
 
@@ -385,6 +400,10 @@ It maps failures to three exceptions:
 
 An invalid token produces a `ResultMessage` with `subtype="success"`, `is_error=True` and `api_error_status=401`. That's why `is_error` must come first. This was seen in E3 and again on the Pi in the real image.
 
+- `ClaudeOutputError.spent` holds the usage of the session that produced nothing valid, so the run's counts and `usage_json` still include it.
+- A result that arrives just before the timeout is kept, even when ending the Claude Code process runs past the timeout.
+- An exception the SDK raises that can't be classified is logged with its traceback before it becomes `ClaudeAuthError`.
+
 ### steps.py
 
 - **The six steps** are plain functions that take `(conn, settings, …)`. Assess and digest call `llm.structured` directly; collect reaches it only through the `web_search` collector.
@@ -395,7 +414,7 @@ An invalid token produces a `ResultMessage` with `subtype="success"`, `is_error=
   - Items Claude scores validly are saved.
   - Items left unscored go round once more, then are split in halves down to single items.
   - An item that fails alone has `assess_attempts` incremented, and after 3 attempts it becomes `assess_failed`.
-  - After 4 invalid answers in a row, it raises `ClaudeUnavailable`, so a model that keeps failing costs 4 calls, not two per item. The deadline is checked before every call, retries included.
+  - After enough invalid answers in a row, it raises `ClaudeUnavailable`: at least 4, and enough for the retry and the halving to reach a single item, which is 7 for a batch of 20 (`steps.output_error_limit`). So one item that always gets an invalid answer is set aside as `assess_failed` after 3 runs instead of stopping scoring, and a model that keeps failing costs 7 calls a run, not two per item. The cost: after 3 such runs, the item at the head of the queue may be set aside although it isn't the cause. The deadline is checked before every call, retries included.
 - **Digest.** The top `DIGEST_MAX_ITEMS` candidates by score are offered to Claude, which returns an `intro` and one summary per item.
   - Offered items that Claude leaves out still appear, after the others, with their score reason as the text.
   - If the call fails, a fallback digest uses each item's score reason.
@@ -404,7 +423,8 @@ An invalid token produces a `ResultMessage` with `subtype="success"`, `is_error=
 ### mail.py
 
 - `render_digest(...) -> Email` is pure. It builds the subject and heading from the newsletter's name, and the plain text and HTML. Every value in the HTML goes through `html.escape`. When `health` is `None`, the email has no health footer and no token warning. When `feedback_to` is set, each item gets the two rating links; `deliver` sets it, to `SMTP_USERNAME`, only on digests addressed to `SMTP_USERNAME`.
-- `render_failure(reason, today)` builds the failure notice. It needs neither the database nor Claude.
+- `render_failure(reason, today)` builds the failure notice, with the commands to look further and the image's revision. It needs neither the database nor Claude.
+- `error_summary(error)` is what `deliver` and `notify_failure` log and store for a failed send: for SMTP errors only the type and the SMTP reply codes, because their text quotes email addresses; for any other error its type and message.
 - `send(email, mail_settings, to)` connects to `smtp.gmail.com` on port 587 with a 60-second timeout, and uses STARTTLS. Digests go to their newsletter's recipient; failure emails go to `SMTP_USERNAME`.
 - `check_login` signs in and quits without sending, for the `check` command.
 - `read_ratings(mail_settings, since)` reads rating emails over IMAP, as described next.
@@ -426,14 +446,14 @@ Your ratings teach scoring what you like. Claude still scores, with no tools, an
    Only you can put mail in your Sent folder, so someone emailing you can't fake a rating.
 3. **Storing them.** `store.save_rating` adds a `feedback` row only when the subject matches exactly, the email has a `Message-ID` and a `Date`, and the item was included in a digest of a newsletter addressed to `SMTP_USERNAME`. The `Message-ID` is unique, so reading the same email again on later runs adds nothing. Rating an item again stores a second row; the latest one counts.
 4. **Using them.** Scoring uses the `score_v2` prompt. After the profile, it shows the newsletter's latest rating of each item rated in the last 60 days: at most 5 liked and 5 disliked titles, newest first, each on one line, cut to 200 characters and fenced. The prompt calls them evidence of taste that refines the profile, and says the profile still decides what is in scope. With no ratings yet, both lists say "(none yet)".
-5. **Seeing them.** Your footer counts your latest rating of each item by source, such as `simon-willison 2 more, 2 less`, to help decide which sources to keep.
+5. **Seeing them.** Your footer counts your latest rating of each item by source, such as `simon-willison 2 more, 2 less`, to help decide which sources to keep, and has one line saying how the links work.
 
 A failure to read ratings, such as a rejected sign-in, doesn't stop the run: it ends `partial`, scoring uses the ratings already stored, and your footer names the error. `check` signs in, reads the Sent folder, and reports how many ratings it found. The agent never changes your profile or search terms; you do (section 18).
 
 ### store.py
 
 - **Plain functions** that take a connection; there is no ORM.
-- **Connections:** `connect()` sets `connect_timeout=10` and `statement_timeout` to 60 seconds.
+- **Connections:** `connect()` sets `connect_timeout=10` and `statement_timeout` to 60 seconds, and always uses `sslmode=verify-full`, whatever `DATABASE_URL` says, so the server's certificate and host name are checked.
 - **The lock:** `try_lock()` calls `pg_try_advisory_lock` on a connection of its own, which stays open for the whole run.
 - **Migrations:** `migrate()` applies the pending files in `newsletter_agent/migrations/`, each in its own transaction, and records them in `schema_migrations`.
 
@@ -470,13 +490,15 @@ digest_items(digest_id, item_id UNIQUE, position, included)
 runs(id, started_at, finished_at, status, counts_json, usage_json, error,
      claude_unavailable, notice_sent)
 feedback(id, message_id UNIQUE, item_id, liked, sent_at, read_at)
+instance(id PK, feedback_token)
 schema_migrations(version PK, applied_at)
 ```
 
 The DDL is `src/newsletter_agent/migrations/0001_init.sql`, plus:
 
 - `0002_source_definition.sql`, which adds `sources.definition`: the source's type, URL, channel and include rules as JSON, so a change to them can be noticed;
-- `0003_feedback.sql`, which adds `feedback`: one row per rating email, keyed by its `Message-ID`. The item's newsletter, source and position in its digest come from joins, not copies.
+- `0003_feedback.sql`, which adds `feedback`: one row per rating email, keyed by its `Message-ID`. The item's newsletter, source and position in its digest come from joins, not copies;
+- `0004_feedback_token.sql`, which adds `instance`: one row holding the database's random feedback token, which every rating link carries (section 7, "Learning your taste").
 
 - **Identity.**
   - An item is identified by its source's own ID: the RSS `guid`, the Atom `id`, the YouTube video ID, or the canonical URL for sitemap entries.
@@ -495,7 +517,12 @@ The first review found that the seed sitemaps hold 4,732 URLs, which would mean 
   - claude.com: `^/resources/articles/` only, which kept 273. `claude.com/blog` redirects there.
 - **First-sight baseline.** The first time a source is collected, its entries are stored as `baseline` and never scored. The exceptions are entries published within `BACKFILL_DAYS`, and web search results, which are recent by request. Sitemaps have no trusted dates, so a sitemap's first sight is entirely baseline.
 - **A changed source starts again.** When a source's type, URL, channel or include rules change in config, `store.sync_source` clears its first sight, ETag and Last-Modified, so its next collection is a first sight again. Without this, widening a sitemap's include rules would have queued hundreds of old pages as new. Search terms aren't part of the definition, so editing them doesn't take a new baseline. The first local run stored 2,605 baseline items and 87 new ones.
-- **`MAX_ITEMS_PER_RUN`** caps enrichment, and separately scoring, for the whole run (REQ-17). Each newsletter in turn gets an even share of what's left, newest first, so a busy newsletter can't starve another and a quiet one's unused share goes to the ones after it. An item with no publication date, as most web search results are, counts from when it was first stored; before that rule, dated feed posts filled the cap and undated search results waited. The rest wait for the next run.
+- **`MAX_ITEMS_PER_RUN`** caps enrichment, and separately scoring, for the whole run (REQ-17). Each newsletter in turn gets an even share of what's left, so a busy newsletter can't starve another and a quiet one's unused share goes to the ones after it.
+  - Within a newsletter's share, items are taken one source at a time: each source's newest item, then each source's second newest, and so on. A busy source, such as YouTube search with up to 25 videos per term, can't crowd out a short curated list. Before this rule, newest-first across all sources let search results push curated posts out of reach for good (fourth review, M4).
+  - Only the newsletter's configured, enabled sources are picked from, so a source you removed or turned off stops being fetched and scored at once.
+  - An item with no publication date, as most web search results are, counts from when it was first stored.
+  - The rest wait for the next run, and your footer shows how many items are waiting. Items aren't aged out yet; that waits for a week of real runs (section 20).
+- **Lowering a score threshold** releases a backlog once: every earlier item at the new level becomes a candidate, the next digest offers the best `DIGEST_MAX_ITEMS` of them, and the rest are recorded as not included.
 - **`DIGEST_MAX_ITEMS`** caps each digest. Candidates beyond it are recorded as not included.
 - **`newsletter-agent backfill --newsletter <key> --source <key> --since <date>`** moves selected `baseline` items to `new`, at most `MAX_ITEMS_PER_RUN` unless `--limit` says otherwise. Sitemap entries have no publication date, so for a sitemap source `--since` compares against when the item was first stored, and the items are picked in reverse sitemap order.
 
@@ -538,12 +565,14 @@ A run with nothing new sends no email (REQ-16), so there is no heartbeat. Three 
 - **A run that crashes, hangs past its hard limit, is killed by `TimeoutStartSec`, or whose container won't start** makes the systemd unit fail.
   - `OnFailure=` then starts `newsletter-agent-failure.service`, which runs `newsletter-agent notify-failure`.
   - The run unit sets `SuccessExitStatus=2`, so a run that already sent its own failure email doesn't trigger a second one.
-- **When Claude is unavailable for 3 runs in a row,** the third run becomes `failed` and sends a failure email, instead of leaving items waiting in silence. Four invalid scoring answers in a row count as Claude being unavailable for that run.
+- **When Claude is unavailable for 3 runs in a row,** the third run becomes `failed` and sends a failure email, instead of leaving items waiting in silence. Enough invalid scoring answers in a row, 7 for a batch of 20, count as Claude being unavailable for that run (section 7).
 - **When every source fails for 3 runs in a row,** the third run becomes `failed` and sends a failure email that names the first errors. A run that collects nothing produces no digest, so without this its health footer would never show the failures.
 - **A hung run can't hold the lock for long.** Three layers make sure of it, because the review found that systemd's timeout alone left the container running and holding the lock:
   1. a watchdog thread in `run.py` ends the process with exit 1, `RUN_DEADLINE_MINUTES` plus 15 minutes after it started, before systemd's 2-hour limit. A dead process ends its database session, which releases the advisory lock;
   2. the run container has a fixed name, `newsletter-agent-run`, and the unit's `ExecStopPost=` force-removes it whenever the unit stops, timeout included. `docker compose run` didn't pass a SIGTERM on to the container when tested, so this is what stops it;
   3. a run that finds the lock held by a run that started over 3 hours ago, or over the deadline plus 30 minutes if that's longer, sends the failure email instead of exiting quietly. It does so every day until the stuck run is stopped.
+
+  A scheduled run never reaches layer 3 while an earlier scheduled run's container survives: Docker refuses a second container named `newsletter-agent-run`, so the unit fails before the agent starts, `ExecStopPost=` removes the old container, and `OnFailure=` sends the generic notice. The next run marks the old one `abandoned`. Layer 3 catches a hung run started some other way, such as a `docker compose run` by hand; its email says how to find and remove that container.
 
 What still goes unreported: the Pi being off, Docker not running at all, and a dead Gmail credential, which breaks the failure email too. A few days with no email is the signal to check.
 
@@ -553,8 +582,9 @@ Failure emails go only to `SMTP_USERNAME`. Only digests addressed to `SMTP_USERN
 - days left on the Claude token, moved to the top of the email in its last 30 days;
 - sources that have failed 3 runs in a row;
 - sources with no new item in 14 days;
+- items waiting to be fetched or scored;
 - items in `assess_failed`;
-- your ratings counted by source, and the error when this run couldn't read them.
+- your ratings counted by source, the error when this run couldn't read them, and one line on how the rating links work.
 
 | Failure | Behavior | Run status |
 |---|---|---|
@@ -563,18 +593,21 @@ Failure emails go only to `SMTP_USERNAME`. Only digests addressed to `SMTP_USERN
 | A source fails, or storing its items fails | Recorded on the source (`consecutive_failures`, `last_error`); the other sources go on | `partial` |
 | A candidate has a malformed or over-2,000-character URL | Skipped, and counted in the log as `skipped` | unchanged |
 | An article or transcript fetch fails | `enrich_failed` with the reason; scored on title and summary | `succeeded` |
-| Claude returns invalid scores | Retried, then split in halves; `assess_failed` after 3 attempts. After 4 invalid answers in a row, scoring stops as `ClaudeUnavailable` | `partial` |
-| A web search term returns invalid output | That term is skipped; the other terms go on | `succeeded` |
+| Claude returns invalid scores | Retried, then split in halves; `assess_failed` after 3 attempts. After 7 invalid answers in a row, for a batch of 20, scoring stops as `ClaudeUnavailable` | `partial` |
+| A web search term returns invalid output | That term is skipped; the other terms go on. When every term's output is invalid, the source fails | `succeeded`, or `partial` when every term failed |
 | Web search hits `ClaudeAuthError` or `ClaudeUnavailable` | The source fails, Claude stops for the run, and later web search sources are skipped | as for the error |
 | `ClaudeUnavailable` | No more Claude calls this run; items wait; a pending digest is still delivered | `partial`, or `failed` on the third run in a row |
 | The digest call fails | A fallback digest from the score reasons, with `fallback=true` | `partial` |
 | `ClaudeAuthError` | No more Claude calls; a pending digest is still delivered; the failure email goes out | `failed` |
-| SMTP fails | `send_error` is recorded; the next run or `send-pending` retries | `partial` |
+| SMTP fails | `send_error` records the error's type and SMTP code, never an address (`mail.error_summary`); the next run or `send-pending` retries | `partial` |
 | The database is unreachable, or the configuration is invalid | The failure email is sent anyway (it needs only SMTP) | `failed`, not recorded |
 | Another run holds the lock | Exit 0 at once, doing nothing; if that run started over 3 hours ago, the failure email | none |
 | The run passes `RUN_DEADLINE_MINUTES` | Steps stop at the next source, item, batch or scoring retry; a digest still due is written from the score reasons, without Claude | `partial` |
+| The deadline passes inside a source: between YouTube search terms or a sitemap index's children | The source fails, so YouTube search's window doesn't move past results it missed | `partial` |
 | The process hangs 15 minutes past the deadline | The watchdog exits with 1; `OnFailure=` sends the failure email | `abandoned` at the next start |
 | The process crashes, or the unit passes `TimeoutStartSec` | `ExecStopPost=` removes the container; `OnFailure=` sends the failure email | `abandoned` at the next start |
+
+**Delivery is at least once.** `deliver` sends a digest, then marks it sent. A crash in between, or a timeout on SMTP's `QUIT` after Gmail accepted the message, sends that digest again on the next run. A duplicate email costs little; a lost one would go unnoticed.
 
 ## 11. Timeouts and the network
 
@@ -586,8 +619,9 @@ Failure emails go only to `SMTP_USERNAME`. Only digests addressed to `SMTP_USERN
   - an `http` URL or redirect is fetched as `https`, with an explicit port 80 dropped. A page that only works over plain `http` isn't fetched, and its item is scored on its title and summary;
   - no proxies.
 - **Address checks.** Item URLs come from third-party feeds, and the agent runs inside the home network. So `http.py`:
-  - allows only `http` and `https`, and refuses a malformed host or port as a blocked address;
-  - resolves each host once and refuses any address that isn't globally routable, which includes loopback, private, link-local, CGNAT and Docker networks, and IPv4-mapped IPv6 forms of those;
+  - allows only `http` and `https`, and refuses a malformed host or port as a blocked address, and a host with `%` in it, which `urllib` would decode into a port;
+  - allows no port but 443 once a URL is turned into `https`, so a link can't aim the agent at another service on a public host; none of the sources uses another port (REQ-57);
+  - resolves each host once and refuses any address that isn't globally routable, which includes loopback, private, link-local, CGNAT and Docker networks, and IPv4-mapped and NAT64 (`64:ff9b::/96`) IPv6 forms of those;
   - connects only to the addresses it checked, while TLS still verifies the certificate against the host name, so a DNS answer that changes between the check and the connection (DNS rebinding) can't send the request elsewhere;
   - repeats the check on every redirect.
 
@@ -596,9 +630,9 @@ Failure emails go only to `SMTP_USERNAME`. Only digests addressed to `SMTP_USERN
 - **Transcripts:** 30 seconds, through the `requests` adapter. This is the one outgoing request that doesn't go through `http.py`, because `youtube-transcript-api` makes it.
 - **SMTP:** 60 seconds.
 - **IMAP:** 60 seconds, as a socket timeout, to `imap.gmail.com` over TLS. Like SMTP, it goes to a fixed Gmail host, not through `http.py`.
-- **Postgres:** `connect_timeout` 10 seconds and `statement_timeout` 60 seconds.
+- **Postgres:** `connect_timeout` 10 seconds and `statement_timeout` 60 seconds, over TLS 1.3 with `sslmode=verify-full`.
 - **Claude:** 600 seconds per call, 300 seconds per web search session, and 180 seconds for the `check` calls. Cleanup after a timeout took about 5 seconds on the Pi.
-- **The whole run:** `RUN_DEADLINE_MINUTES` (90), checked between sources, items, batches and scoring retries and before each digest; a watchdog that ends the process 15 minutes after the deadline; and `TimeoutStartSec=2h` on the systemd unit. Keep `RUN_DEADLINE_MINUTES` below 105, so the watchdog acts before systemd does.
+- **The whole run:** `RUN_DEADLINE_MINUTES` (90), checked between sources, items, batches and scoring retries, before each digest, and between the requests of a YouTube search or a sitemap index; a watchdog that ends the process 15 minutes after the deadline; and `TimeoutStartSec=2h` on the systemd unit. Keep `RUN_DEADLINE_MINUTES` below 105, so the watchdog acts before systemd does. The deadline is measured with a monotonic clock, so a clock change at boot can't end a run early. The run unit is also ordered after `time-sync.target`, but that takes effect only where a service activates the target, such as `systemd-time-wait-sync`; on the Pi nothing does (checked on 2026-10-30), so a run at boot can start before the clock is synchronized. Its dates and log times may then be off until it is; enabling `systemd-time-wait-sync.service` would make the run wait, and changes how the Pi boots, so that is your decision.
 - **Concurrency:** fetches run one at a time. The caps keep a run to a few hundred requests, and running them one by one keeps the load on each site low.
 
 ## 12. Packaging and deployment
@@ -635,20 +669,23 @@ flowchart LR
   Everything else uses the standard library: `urllib`, `xml.etree`, `html.parser`, `html.escape`, `smtplib`, `imaplib`, `email` and `tomllib`. The dev tools, pinned in the `dev` group, are listed in section 12.
 - **Dockerfile.** A multi-stage build on `python:3.12-slim`, with `uv` copying the locked dependencies; both images are pinned by digest. The image:
   - runs as UID 10001;
-  - sets `DISABLE_AUTOUPDATER=1`;
+  - sets `DISABLE_AUTOUPDATER=1`, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, which turns off Claude Code's usage metrics and error reports, so the only traffic to Anthropic is the Claude calls themselves;
+  - takes the build argument `REVISION`, the deployed commit (REQ-60), as the label `org.opencontainers.image.revision` and the variable `NEWSLETTER_AGENT_REVISION`, which `check`, the run's first log line and failure emails show;
   - puts `HOME` and `CLAUDE_CONFIG_DIR` under `/tmp`, which Compose mounts as tmpfs.
   - The image is 740 MB on arm64, mostly the bundled Claude Code.
 - **compose.yaml.** The project is named `newsletter-agent` and lives in its own folder, away from any other project on the Pi.
-  - `db`: `postgres:18`, pinned by digest, with a named volume, a `pg_isready` health check, `restart: unless-stopped` and no published ports. On its first start, `db/init-agent.sql` creates the agent's role, `newsletter_agent`, which isn't a superuser and owns only its database, `newsletter_agent`; and takes the public's right to connect to the other databases away. `db/pg_hba.conf` makes Postgres refuse any TCP connection without TLS and accept TLS ones with a password. Postgres serves TLS with the certificate and key in `db-tls/` beside the secrets, which the README's setup makes; the container's entry command first copies the root-only key to a file only `postgres` can read, because Postgres refuses a key that others can read, and how a host maps file owners into a container varies.
+  - `db`: `postgres:18`, pinned by digest, with a named volume, a `pg_isready` health check, `restart: unless-stopped` and no published ports. On its first start, `db/init-agent.sql` creates the agent's role, `newsletter_agent`, which isn't a superuser and owns only its database, `newsletter_agent`; and takes the public's right to connect to the other databases away. `db/pg_hba.conf` makes Postgres refuse any TCP connection without TLS, and accept a TLS one with a password only for the agent's role into its own database; the admin account signs in only through the local socket inside the container, as the README's maintenance commands do. Postgres accepts only TLS 1.3 (`ssl_min_protocol_version`), and the README makes an ECDSA P-256 certificate (REQ-58). Postgres serves TLS with the certificate and key in `db-tls/` beside the secrets, which the README's setup makes; the container's entry command first copies the root-only key to a file only `postgres` can read, because Postgres refuses a key that others can read, and how a host maps file owners into a container varies.
+  - `db` drops every capability except the five that this copy and the Postgres entry script need to set file owners and switch to the `postgres` user (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`), runs with `no-new-privileges`, and is only on `backend`, an internal network with no route out. The agent is on `backend` and on the default network, which reaches the internet.
   - `agent`: under a profile, so `up` doesn't start it, and a plain `docker compose build` skips it too: build it by name, `docker compose build agent`. It has `init: true`, so an init process forwards signals to Python and reaps Claude Code's processes; `restart: "no"`; `read_only: true` with a 512 MB tmpfs `/tmp`; `cap_drop: [ALL]`, `no-new-privileges` and at most 256 processes; a limit of 2 CPUs; and `config/` mounted read-only.
   - The agent connects to `db` as `newsletter_agent`, with `sslmode=verify-full` against the mounted `server.crt`, and `store.connect` refuses a connection that isn't encrypted.
   - Secrets come from `db.env` and `agent.env` in `NEWSLETTER_AGENT_ENV_DIR` (default `/etc/newsletter-agent`), owned by root with mode `0600`. `db.env` holds two passwords: the Postgres admin's, `POSTGRES_PASSWORD`, and the agent's, `AGENT_DB_PASSWORD`. The agent knows only its own.
 - **systemd** (`deploy/`):
   - the run unit: `Type=oneshot`, `ExecStart=/usr/bin/docker compose run --rm -T --name newsletter-agent-run agent run`, `ExecStopPost=-/usr/bin/docker rm -f newsletter-agent-run`, `TimeoutStartSec=2h`, `SuccessExitStatus=2` and `OnFailure=newsletter-agent-failure.service`;
+  - the run unit is ordered after `time-sync.target`, which makes a run at boot wait for the clock only where a service activates that target; on the Pi none does (section 11);
   - the timer: daily at 07:00, with `RandomizedDelaySec=15m` and `Persistent=true`.
 
-  The README shows how to install them with the project path filled in. `systemd-analyze verify` passed on the Pi before `ExecStopPost=` was added; it hasn't been re-run since.
-- **Deploying** copies the repository to a staging folder on the Pi, then into `/opt/newsletter-agent`, owned by root, both with `rsync --delete`, so files removed in the repository are removed on the Pi. The units run as root from `/opt`, so they use no file the login account can change. The copy follows `.gitignore`, so it holds exactly the repository's files. `config/` is edited in the repository and deployed, never edited on the Pi, so it has one writer.
+  The README shows how to install them with the project path filled in. `systemd-analyze verify` passed on the Pi on 2026-10-30, with `ExecStopPost=` and `time-sync.target` in the run unit and the project path filled in.
+- **Deploying** copies the latest reviewed commit on `main`, never the Mac's working tree (REQ-60): `git archive origin/main` into an emptied staging folder on the Pi, with the commit's hash in `REVISION`, then `rsync --delete --chown=root:root` into `/opt/newsletter-agent`, owned by root, so files removed in the repository are removed on the Pi. The units run as root from `/opt`, so they use no file the login account can change. The image is built with `REVISION`, so every run can say which commit it is. `config/` is edited in the repository and deployed, never edited on the Pi, so it has one writer.
 - **Migrations** run at the start of every run, under the lock, so new code never meets an old schema.
 - **Logs** are JSON lines on stderr. They land in the systemd journal, which is persistent on the Pi, and the counts and Claude usage also go into the `runs` table.
 
@@ -675,12 +712,13 @@ A new push to a pull request cancels the run it replaces; runs on `main` aren't 
 | Migrations | The same | `squawk` finds a dangerous statement in a migration, such as dropping a column or adding a required one without a default |
 | Large files | The same | A file is over 500 KB (`check-added-large-files`) |
 | Vulnerabilities (REQ-38) | The same | `uv audit` finds a known vulnerability in any locked package, dev tools included, or `uv.lock` is out of date |
-| Workflows | The same | `actionlint` finds a mistake in a workflow, or `zizmor` finds a security problem in one, such as an injectable expression, an unpinned action or a dangerous trigger |
+| Workflows | The same | `actionlint` finds a mistake in a workflow; `zizmor` finds a security problem in one, such as an injectable expression, an unpinned action or a dangerous trigger; or `scripts/check_review_workflow.py` finds a setting that would let Claude review change the repository (REQ-63) |
 | Links | The same | `lychee`, offline, finds a link in a Markdown file to a missing file or heading. Web links aren't checked, because sites being down would fail unrelated pull requests |
-| Claude review (REQ-44, REQ-45) | `claude-code-review.yml`, on every pull request: opened, pushed to, reopened or marked ready | Claude reports any finding, any inline comment is posted during the review, or Claude returns no verdict, unless you have added the `review-override` label |
-| Workflow guard | `workflow-guard.yml`, on `pull_request_target`: it runs `main`'s copy of itself, so a pull request can't change it | The pull request changes anything under `.github/` and you haven't added the `review-override` label. It reads only the list of changed files and labels, checks out nothing, and has read-only permissions, which is why zizmor's `dangerous-triggers` audit is ignored for it in `.github/zizmor.yml` |
+| Claude review (REQ-44, REQ-45, REQ-64) | `claude-code-review.yml`, on every pull request: opened, pushed to, reopened, marked ready or labeled | Claude lists any blocking problem, and every problem it finds blocks; any inline comment is posted during the review; or Claude returns no verdict. The run started by you adding `review-override` passes without a review; a later push is reviewed again |
+| Workflow guard | `workflow-guard.yml`, on `pull_request_target`: it runs `main`'s copy of itself, so a pull request can't change it | The pull request changes a file that defines the checks: anything under `.github/` or `scripts/`, or `.gitleaks.toml`, `.squawk.toml` or `.pre-commit-config.yaml`, counting a renamed file by its old name too. It also fails when GitHub lists fewer files than the pull request changes, as its files API stops at 3,000, and when an API call fails. Only the run started by you adding `review-override` passes such a pull request; a later push needs the label again. It reads only the list of changed files and the event, checks out nothing, and has read-only permissions, which is why zizmor's `dangerous-triggers` audit is ignored for it in `.github/zizmor.yml` (REQ-59) |
 | Secrets (REQ-39) | The same | gitleaks finds a secret in any commit of what is being checked: the pull request's merge result or `main`, with their whole history. Other branches aren't scanned, so a bad branch can't fail every pull request; gitleaks' default, `--all`, would scan them |
 
+- **The weekly audit.** `audit.yml` runs `uv audit` every Monday at 06:00 UTC, and on demand, so a vulnerability published while no pull request is open still shows up; GitHub emails you when it fails. It isn't a required check, because it doesn't run on pull requests. Dependabot alerts are a repository setting, separate from this.
 - **The boundary rule (REQ-40).** Ruff bans these imports everywhere except in the module that owns the boundary:
   - `claude_agent_sdk`: `llm.py`;
   - `psycopg`: `store.py`;
@@ -699,13 +737,15 @@ A new push to a pull request cancels the run it replaces; runs on `main` aren't 
   - Vulture's `ignore_names` lists names that the standard library calls: `format`, `handle_*`, `redirect_request`, `https_open` and `_create_connection`, the last two for connecting only to checked addresses (section 11).
   - gitleaks has no exceptions. Its `generic-api-key` rule flags a quoted ID-like value assigned to a name containing `KEY`, so the public YouTube channel ID that `youtube_search.py` queries to check the API key is named `PROBE_CHANNEL`. The private repository's history made an allowlist necessary; the fresh history doesn't.
   - Squawk's `.squawk.toml` turns off six rules written for large tables under live traffic: robust statements, concurrent indexes, lock and statement timeouts, and bigint keys. Here the tables are small, each migration runs in one transaction under the run lock, and nothing else writes meanwhile. The rules that catch lost data, such as dropping a column or table, stay on.
-  - zizmor's `dangerous-triggers` audit is ignored for `claude.yml` only, in `.github/zizmor.yml`. It flags `issue_comment`, which a workflow runs on with the default branch's secrets, so in a public repository any commenter could start it. `@claude` mentions need that trigger. Two guards keep strangers out: the job's condition requires the comment, review or issue to come from the repository's owner (`author_association` is `OWNER`), and `claude-code-action` itself refuses to run for anyone without write access (its `docs/security.md`).
+  - zizmor's `dangerous-triggers` audit is ignored for `claude.yml` and `workflow-guard.yml`, in `.github/zizmor.yml` (REQ-59). The guard's reason is in its row above. For `claude.yml`, it flags `issue_comment`, which a workflow runs on with the default branch's secrets, so in a public repository any commenter could start it. `@claude` mentions need that trigger. Two guards keep strangers out: the job's condition requires the comment, review or issue to come from the repository's owner (`author_association` is `OWNER`), and `claude-code-action` itself refuses to run for anyone without write access (its `docs/security.md`).
 - PR hygiene has its own workflow, because editing a pull request's description should re-run only that job.
 - **Claude's GitHub app** adds two workflows. Both sign in with the `CLAUDE_CODE_OAUTH_TOKEN` repository secret, your subscription, so every review uses your plan's limits:
-  - `claude-code-review.yml` is the Claude review check. It reviews every pull request when it's opened, pushed to, reopened or marked ready, and posts inline comments through the `code-review` plugin. Claude also returns the number of findings it posted, through `--json-schema`, and the check fails unless that number is 0 (REQ-45). No verdict fails too. Before running Claude, the job reads the pull request's current labels through the API. If `review-override` is there, the job passes without a review. Labels are read through the API, not from the event, so adding the label and re-running the job is enough. A new push to a pull request cancels the review it replaces.
+  - `claude-code-review.yml` is the Claude review check. It reviews every pull request when it's opened, pushed to, reopened or marked ready, with the project's own prompt, holding the change to `CLAUDE.md`, which the action restores from `main`, and to this document. Claude posts an inline comment for each problem and returns its `blocking` list and a `summary` through `--json-schema`; the job writes both to the run's summary page, and the check fails unless the list is empty and no inline comment was posted during the review (REQ-45). No verdict fails too.
+  - **Every problem blocks (REQ-64):** anything wrong, unclear, inconsistent or out of date, such as a bug, a typo, a misleading docstring or a document the change didn't update, and anything against `CLAUDE.md` or the pull request's own description. Anthropic's `code-review` plugin, used until this change, leaves minor and low-confidence problems out, so it was replaced. To keep a pull request from going round forever, a problem counts only when Claude has confirmed it in the files, it lies in what the pull request changes or breaks, and Claude can name the change that fixes it. A preference the repository gives no reason for doesn't count. Claude can't browse, so a claim about how GitHub, Claude Code or a library behaves blocks only as a request for evidence in the pull request. A risk the description already states, or one settled only after merging, goes in the summary. Each review starts fresh; your `review-override` label is the way out when it keeps finding new problems.
+  - **It only reviews (REQ-63):** the job's token has only `contents: read` and `pull-requests: write`, and the action uses that token (`github_token`) rather than the Claude app's, which can push. Claude may run only `gh pr diff`, `gh pr diff --name-only` and `gh pr view` for this pull request, read files, and post inline comments; editing and writing files, and the web, are denied, and no commit-signing or GitHub MCP tool is enabled. `scripts/check_review_workflow.py` fails the Workflows check if any of that changes. A pull request is reviewed by its own copy of the workflow, so one that rewrote the prompt and these settings together could weaken its own review; the Workflow guard makes you read any such change first. The job skips the review only when the event that started it is you adding `review-override`. The label staying on the pull request doesn't skip later pushes, so a commit pushed after you labeled one is reviewed again; to skip that one too, remove the label and add it again. A new push to a pull request cancels the review it replaces.
   - Only you add `review-override`, when Claude is wrong or can't review. `CLAUDE.md` forbids Claude Code from adding it.
   - `claude.yml` answers a comment, review or issue from you that mentions `@claude`, only in an issue or pull request you opened, and Claude reads only your comments there (`include_comments_by_actor`), so a stranger's text can't steer it. Each Claude step has a 30-minute limit.
-  - The action pinned at v1.0.261 runs only if the workflow file is identical to `main`'s copy. So a pull request that changes either file isn't reviewed, and Claude review fails on it with "no review" until you add `review-override`. The change takes effect once merged.
+  - With the Claude app's token, the action pinned at v1.0.261 runs only if the workflow file is identical to `main`'s copy. `claude.yml` still uses that token, so a pull request that changes it isn't answered until merged. Claude review now uses the job's own token, which knackpack's review workflow relies on to review pull requests that change it; this repository hasn't seen that happen yet.
   - Both workflows follow the pipeline's rules: no comments, actions pinned by commit, and checkout without saved credentials. The action swaps in its own short-lived token for git.
 - **The rule on `main` (REQ-50).** A repository ruleset named `main`, under Settings, Rules, on GitHub, applies to the default branch:
   - a pull request is required, with 0 approvals, because GitHub doesn't let you approve your own pull request;
@@ -719,9 +759,9 @@ A new push to a pull request cancels the run it replaces; runs on `main` aren't 
 - Closing keywords only link an issue when the pull request targets the default branch, `main`.
 - The check scripts use only the standard library and run with the runner's own Python 3.12. They share `scripts/repository.py`, which lists tracked files and untracked files that git doesn't ignore, so they give the same answer on the Mac: `python3 scripts/check_no_comments.py` from the repository root.
 - The comment check reads Python with `tokenize`, so docstrings and `#` inside strings pass. It reads TOML, SQL, YAML, the Dockerfile, the systemd units and the ignore files with a small scanner that skips quoted text. Markdown and `LICENSE` are prose, not code, and aren't checked.
-- A pull request runs the check scripts and the tools' settings from its own branch, so a change to a script or a setting is checked by the changed version. Review changes to `scripts/`, `.github/`, `pyproject.toml`'s tool sections, `.squawk.toml` and `.gitleaks.toml` with that in mind.
+- A pull request runs the check scripts and the tools' settings from its own branch, so a change to a script or a setting is checked by the changed version. The Workflow guard requires your label for `scripts/`, `.github/`, `.squawk.toml`, `.gitleaks.toml` and `.pre-commit-config.yaml`. It leaves out `pyproject.toml`, because every dependency update would trip it, so read changes to its tool sections yourself.
 - **Locally (REQ-47),** `.pre-commit-config.yaml` runs the checks in two git hooks, so a failure shows up before the pipeline runs:
-  - **On every commit:** No comments, No tests, Lint and format, Dead code, Dependencies, Spelling, Large files, and Migrations and zizmor when those files change. Together they take well under a second once warm.
+  - **On every commit:** No comments, No tests, Lint and format, Dead code, Dependencies, Spelling, Large files, and Migrations, zizmor and the Claude review check when those files change. Together they take well under a second once warm.
   - **On every push:** Types, Duplicates, Vulnerabilities and Secrets. Types and Duplicates scan the whole project, and the audit needs the network.
   - **Setup, once per clone:** `uv run pre-commit install` installs both hooks. The secret scan needs gitleaks on the machine; on the Mac, `brew install gitleaks` installs 8.30.1, the pipeline's version. Its hooks are local commands, so pre-commit itself downloads nothing.
   - **Run them by hand:** `uv run pre-commit run --all-files` runs the commit stage; add `--hook-stage pre-push` for the push stage.
@@ -886,6 +926,21 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
   - A last change then cleaned Claude's structured output the same way, through `text.storable_json`, because the digest's JSON goes into `jsonb`, which refuses `\u0000`. After it, `check` on the Mac called Haiku and web search through the new path, and both passed; the image wasn't rebuilt for it.
   - Every pre-commit hook passed in both stages, and `actionlint` and `zizmor` passed on the four workflows.
 
+- **After the fourth review (section 17), on the Mac, with the project's Python 3.12.13 and then in an image built from the branch (Python 3.12.16), against a throwaway Postgres 18 made by the edited Compose file with an ECDSA certificate from the README's new command, fake Gmail and a made-up Claude token:**
+  - A throwaway script ran the changed functions. `check_url` refused port 1012, a host with `%3A` in it, and NAT64 forms of the cloud metadata address and of a private address, and still allowed port 443 and the NAT64 form of a public address; an `http://…:8080` link was refused once turned into https, and web search kept an `http://…:80` link. A page with `<svg><title>` icons kept only its own title. The digest's plain text showed `WARNING:` with `claude setup-token` in lower case, its HTML a `<code>` command, a viewport and a light colour scheme, wrapping for a 160-character title, numbered `<h2>` titles, underlined rating links, the waiting count and the rating help, and an international look-alike domain in its `xn--` form; a digest for someone else had none of the owner's parts. `error_summary` kept no address from any SMTP error. `backfill --limit 0` and `-1` were refused. When all 3 web search terms returned invalid output, the source failed with their usage attached; a search stopped by the deadline didn't fail. A stand-in Claude Code stream whose result came at 1.0 s and whose cleanup took 1.0 s, with a 1.5 s timeout, returned the result.
+  - In the database, TLS 1.2 was refused and TLS 1.3 used `TLS_AES_256_GCM_SHA384`. The agent's role connected with `verify-full`; a `DATABASE_URL` asking only for `sslmode=require` without a root certificate was refused, because `connect` forces `verify-full`. The superuser over TCP got "no pg_hba.conf entry". The `db` container started with only its five capabilities and `no-new-privileges`, and couldn't reach the internet from the internal network.
+  - The real steps ran against that database with a stand-in Claude that fails any batch containing one marked item, placed first in the queue. Over four runs, the item was set aside after 1, 2 and then 3 attempts, became `assess_failed` in the third run, 39 other items were scored in the first, and no run was `failed`. The calls that produced nothing valid were counted in the runs' usage. The enrich queue alternated between the two sources that had new items, and limiting it to one source returned only that source's items. A send refused with `SMTPRecipientsRefused` stored `SMTPRecipientsRefused 550`, with no address.
+  - `check` showed the image's revision, and a full `run` logged it in its first line. Claude Code started with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, offered only `StructuredOutput`, and reported the made-up token as a 401, so the run ended `failed` and exited 1 with Gmail unreachable.
+  - Every pre-commit hook passed in both stages, and `actionlint` and `zizmor` passed on the five workflows.
+- **After the fourth review, on the Pi, in a throwaway folder and Compose project, with the same test config, a made-up Claude token and Gmail blocked:**
+  - The README's commands made both passwords and the ECDSA certificate as root-only files. One of them, `sudo chmod 600 /etc/newsletter-agent/*.env`, couldn't work and was fixed: the folder is root-only, so the login account's shell can't expand the `*`.
+  - The image built from the branch in 161 seconds for `arm64`, with the revision as its label.
+  - Postgres started with only its five capabilities, `no-new-privileges` and the internal network. TLS 1.2 was refused, TLS 1.3 used `TLS_AES_256_GCM_SHA384`, the agent's role connected with `verify-full`, a URL asking only for `require` was refused, the superuser got "no pg_hba.conf entry" over TCP, and the database couldn't reach the internet.
+  - `check` showed the revision. A full `run` applied the 4 migrations, collected all three sources over the Pi's network, started Claude Code with only `StructuredOutput` and the telemetry switch, and ended `failed` with the made-up token's 401, exiting 1.
+  - The README's `\password` step asked for the new password twice, the agent connected with it, and the old one was refused. Replacing the certificate and recreating `db` made it serve the new one, the agent connected, and the data stayed.
+  - The README's copy step, `git archive origin/main` over SSH with `REVISION`, then `sudo rsync --chown=root:root`, gave 60 root-owned files and no private ones. `systemd-analyze verify` passed on the branch's units with that folder filled in.
+  - The smart-home containers stayed healthy throughout, and every test container, network, volume, image and folder was removed afterwards. The build added about 1.3 GB to Docker's build cache on the Pi, which wasn't pruned, because the cache already held other entries.
+
 Not verified yet:
 
 - a real Gmail send, which needs the app password;
@@ -894,12 +949,12 @@ Not verified yet:
 - web search with Opus 5.5, its real plan usage per run, and web search on the Pi;
 - injection through a real search result; only an injected search term was tried;
 - three unavailable runs in a row;
-- the systemd units running for real, including `ExecStopPost=` on a timeout; `systemd-analyze verify` hasn't been re-run since it was added;
-- the hardened container (`cap_drop`, `no-new-privileges`, `pids_limit`) on the Pi; it ran on the Mac;
+- the systemd units running for real, including `ExecStopPost=` on a timeout; they were verified, not installed;
 - ratings against real Gmail: the IMAP sign-in with the app password, the Sent folder's attribute, how Gmail's `SEARCH SUBJECT` matches the rating subject, and whether Gmail on your phone and on the web opens the `mailto:` links with the subject filled in;
 - whether ratings help over weeks of real use, or push whole topics down after a single dislike;
-- on GitHub: the Workflow guard, the pinned review plugin, and Claude review's count of posted comments;
-- on the Pi: the install into `/opt/newsletter-agent` with `rsync --chown`, the units from there, and the database setup with its certificate.
+- on GitHub: the Workflow guard, including its new file list, failure on an API error and the label honored only when added; Claude review with its own prompt, its job's token, and its count of posted comments; and the weekly audit;
+- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` with the real token: only a made-up token was tried;
+- on the Pi: the install into `/opt/newsletter-agent` itself and the units running from there; the same steps ran in a throwaway folder.
 
 Before any `claude-agent-sdk` upgrade, repeat the Pi checks: `check` with the real token, then with an invalid one.
 
@@ -947,12 +1002,16 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 
 - **A newsletter for someone else on your subscription.** The Consumer Terms say "You also may not make your Account available to anyone else". You run the agent, and the other person only receives an email. Whether that counts is your judgement, not a settled reading. Decide it before a newsletter for someone else goes live. Your own newsletters aren't affected.
 - **Pruning the seed sources** (25 sources, with 7 YouTube and 7 web search terms) and the interest profile, before the first real run. REQ-28 asks for short lists.
+- **Two GitHub settings:** Dependabot alerts, and an Actions policy that allows only pinned, listed actions. Deferred: you'll decide later.
+- **A personal email in the public history.** The merge commit of pull request #2 has a personal address as its author, because GitHub uses your primary email for merges made in the browser. GitHub's "Keep my email addresses private" setting stops new ones; removing this one needs a rewrite of `main`, which the rule on `main` blocks. Deferred: you said it isn't a priority now.
 
 **Risks:**
 
 - **Silent outages (REQ-16).** With no email on quiet days, a Pi that's off, Docker not running, or a dead Gmail credential looks like a quiet day. Several days without any email is the signal to check.
 - **Terms can change.** If plan sign-in for the Agent SDK stops being allowed, switch to an API key: one environment variable and no code change. That path is untested.
 - **Bare-mode default (F-04).** A future Claude Code release could stop reading the token through the SDK. The SDK is pinned; before upgrading, rebuild, then run `check` with the real token and with an invalid one.
+- **Fetching any public site (REQ-57, accepted).** Sources link anywhere, so the agent can't keep a list of allowed domains or paths (ASVS 5.0.0 v5.0.0-1.3.6, 13.2.4 and 13.2.5, Level 2). A link from a feed, sitemap or search result can make the agent send a TLS `GET` from your network to any public host on port 443. Owner: you. Scope: collection and enrichment fetches of public https URLs on any domain and path. Reason: the agreed sources (REQ-03, REQ-28) link anywhere. Controls: the non-public address denylist with pinned connections, https only, port 443 only, the 90-second deadline and 5 MB cap, and the caller's headers dropped across hosts. Review: 2027-10-30. Follow-up: an optional `DOCKER-USER` firewall rule on the Pi that drops the agent's traffic to the home network.
+- **Static database passwords (REQ-62, accepted).** The agent and the Postgres admin sign in with passwords that don't change on their own, kept with the database's TLS key in root-only files and readable by anyone with Docker access on the Pi (ASVS 5.0.0 v5.0.0-13.2.1 and 13.3.1, Level 2). Certificate login was tested and set aside under REQ-58: it needs a CA file, a client certificate and a key owned by the agent's UID on every install, and still leaves a static key. Owner: you. Scope: `POSTGRES_PASSWORD`, `AGENT_DB_PASSWORD` and the database TLS key. Reason: REQ-58, and Docker access on the Pi already equals root. Controls: TLS 1.3 only with `verify-full`, TCP logins for the agent's non-superuser role only, generated passwords, root-only files, and the README's steps to change them, which were checked on the Pi. Review: 2027-10-30. Follow-up: certificate login if the project ever has more than one operator.
 - **A wide credential on the Pi (REQ-14, accepted).** The Pi holds the Claude token, a personal Gmail app password that can also read the mailbox, and a YouTube key. Anyone who can sign in to the Pi can read them. Controls: they live only in root-only files; `settings.take_secrets` removes them from the environment before Claude Code starts; the agent uses IMAP only to read three headers from the Sent folder. Review: at the token renewal, 2027-10-30, and whenever who can sign in to the Pi changes. Follow-up: switch if Google offers a credential limited to sending and reading one folder.
 - **The agent reads your mailbox (REQ-32).** With ratings, it uses that IMAP access every run. It keeps to the Sent folder, read-only, and fetches only three headers of emails with the rating subject from the last 30 days. Anyone who can change the code or the image on the Pi could read more; that was already true of the app password.
 - **Ratings can narrow what you see (REQ-32).** You can only rate what a digest showed you, and in E5 three dislikes pushed a whole topic down. The prompt shows at most 5 likes and 5 dislikes, from the last 60 days, and says the profile decides what is in scope. If a topic you care about disappears, edit `interests.md` or rate an item on it "More like this". The order of a digest may also bias which items you rate; the position is kept in `digest_items` if that needs checking.
@@ -961,21 +1020,55 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 - **Page structure (F-05).** Anthropic has no feed, so the agent depends on its sitemap and page HTML. Breakage shows up as failing or silent sources in the health footer.
 - **Plan usage.** Runs share your subscription's limits with your own Claude use, and usage grows with each newsletter and each web search term. The `runs` table records it.
 - **Web search (REQ-29, accepted).** Search results reach a Claude that has a tool. Section 5 lists what injected text could do. The results' quality depends on Claude's search tool and the prompt; aggregator and release-stub pages got through in testing and were scored low. If `WebSearch` changes, for example by gaining page fetching, the tool check stops the run until the code is reviewed. Controls: `WebSearch` is the only tool, checked fail-closed; Claude's links pass the address checks before they're stored and again when fetched; everything shown is defanged, and email links come only from stored URLs. Review: 2027-10-30, and before every `claude-agent-sdk` upgrade. Follow-up: repeat the injection test of section 14 at each upgrade.
-- **Merging depends on Claude review (REQ-49, REQ-50).** Claude review is a required check, so nothing merges while Claude has findings, can't review a pull request that changes its own workflow, or can't sign in because the `CLAUDE_CODE_OAUTH_TOKEN` secret is missing or expired. The check fails when Claude reports any finding, and also when any inline comment was posted during the review, so a miscount can't pass a pull request. It hasn't yet passed on GitHub; watch the first ordinary pull request. The review plugin is pinned to one commit of `anthropics/claude-plugins-official`, through a one-plugin marketplace the job writes; update the commit there to take a newer version. Your `review-override` label is the only way past it. Every review draws on your plan's limits.
+- **Merging depends on Claude review (REQ-49, REQ-50).** Claude review is a required check, so nothing merges while Claude has findings or can't sign in because the `CLAUDE_CODE_OAUTH_TOKEN` secret is missing or expired. The check fails when Claude lists any blocking problem, and also when any inline comment was posted during the review, so a miscount can't pass a pull request. Since every problem blocks (REQ-64), a review can find something new on each push; your `review-override` label is the only way past it, and the way out of such a loop. It hasn't yet passed on GitHub with its own prompt; watch this pull request and the next ordinary one. Every review draws on your plan's limits.
 - **The repository is public (REQ-50).** Anyone can read the code and these documents, and open issues and pull requests. Keep personal details, the Pi's network and access details, and secrets out of every commit, issue and comment: history is permanent, and GitHub keeps every pull request's commits even after its branch is deleted. Workflows on a stranger's pull request wait for your approval and get no secrets, and `claude.yml` answers only you.
 - **No backups.** Dropping data, by a migration or `docker compose down -v`, can't be undone.
-- **Logs stay on the Pi (REQ-30, accepted; security review SEC-6).** If the Pi is lost or compromised, its logs go with it. Failure emails are the only record that leaves it. Controls: logs carry no secrets and no query strings (`http.describe`), and only root can read the journal and the database. Review: 2027-10-30. Follow-up: send logs off the Pi once a backup destination exists (section 18).
+- **Logs stay on the Pi (REQ-30, accepted; security review SEC-6).** If the Pi is lost or compromised, its logs go with it. Failure emails are the only record that leaves it. Reason: there is no backup destination or log service to send them to, and adding one would mean a new account and secret for a one-person agent. Controls: logs carry no secrets and no query strings (`http.describe`), and only root can read the journal and the database. Review: 2027-10-30. Follow-up: send logs off the Pi once a backup destination exists (section 18).
 
 **Housekeeping rules:**
 
-- **Fixing vulnerable dependencies.** `uv audit` runs on every pull request, every push to `main` and every `git push`. A Critical or High finding is fixed within 7 days, a Medium one within 30, and a Low one with the next change. A dependency with no fix is replaced, or its risk is written here with a review date.
+- **Fixing vulnerable dependencies.** `uv audit` runs on every pull request, every push to `main`, every `git push`, and every Monday (`audit.yml`). A Critical or High finding is fixed within 7 days, a Medium one within 30, and a Low one with the next change. A dependency with no fix is replaced, or its risk is written here with a review date.
 - **What data is what.**
   - Secret: the Claude token, the Gmail app password, the YouTube key, both Postgres passwords and the database's TLS key. They live only in root-only files on the Pi, never in the repository, an issue or a log.
   - Personal: your Gmail address and each newsletter's recipient, only in `agent.env`; your ratings and the run history, only in Postgres on the Pi.
   - Public: the collected items, which come from public pages, and this repository.
+  - Nothing is pruned: items, assessments, ratings and runs are kept as long as the `db-data` volume lives. Nothing is encrypted at rest beyond what the Pi's disk offers, which here is nothing; the protection is that only root can read the volume and the secrets files. Error text from SMTP, which quotes email addresses, is reduced to its type and reply code before it's logged or stored (section 10).
+- **Keys and cryptography in use.**
+  - The Claude token: made by `claude setup-token`, valid one year, renewed before 2027-10-30 (README, "Maintenance").
+  - The Gmail app password: replaced when the Google password changes. The YouTube key: replaced in Google Cloud if it's ever exposed.
+  - Both Postgres passwords: 48 random hex characters from `openssl rand`, changed with `\password` (README, "Maintenance").
+  - The database's TLS key: ECDSA P-256, a self-signed certificate for `DNS:db`, valid 10 years, replaced as the README says or when the key may have been exposed.
+  - In use: TLS 1.3 to Postgres; TLS with certificate checks to every HTTPS host, and to Gmail for SMTP (STARTTLS) and IMAP; SCRAM-SHA-256 for Postgres passwords; and MD5 only to format a random UUID into the feedback token, which isn't a secret.
+- **What leaves the Pi.** Requests to the sources and pages it fetches, Google's YouTube API, Gmail's SMTP and IMAP servers, and Anthropic for the Claude calls through Claude Code. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off Claude Code's usage metrics and error reports, so nothing else goes to Anthropic or a third party.
+- **Security events.** These are logged as warnings or errors in the journal: a blocked address (`web search link dropped`, and `BlockedAddress` in `item_content.error`); Claude Code offering unexpected tools or no `init` message, which is a `ClaudeAuthError` that fails the run and emails you; a database connection without TLS (`InsecureConnection`); a sign-in failure to Gmail or Claude; and a run lock held by a stuck run. Only those that fail a run reach you by email.
 - **Keeping logs.** The journal follows the Pi's own journald limits, which this project doesn't change. The `runs` table keeps one row per run, a few kilobytes a day, and nothing is pruned. Only root and accounts that can use `sudo` can read either.
 
 ## 17. Review outcome
+
+**Fourth review, 2026-10-30, of the published code base at `c0e0280`.** knackpack's orchestrated review ran seven reviewers in parallel (adversarial, architecture, security in assess mode at ASVS 5.0.0 Levels 1 and 2, slop, design pattern, Python, and UI for the emails), and the adjudicator checked each of the seven serious findings once. Their 40 findings merged into 32 issues. You decided the open ones (REQ-57 to REQ-60 and REQ-62), and every issue is fixed on one branch for issue #4 (REQ-61). The adjudicator lowered the email warning from High to Low, raised the database passwords from Low to Medium, and refuted one of the TLS finding's two ASVS citations.
+
+| Issue | Severity | Change |
+|---|---|---|
+| One item that Claude can never score validly stopped all scoring, and failure emails blamed Claude (M1) | High | The stop covers the halving depth, 7 for a batch of 20 (section 7) |
+| `review-override` passed Claude review and the Workflow guard for every later push (M2) | Medium | The label counts only in the run its adding starts (section 12) |
+| The docs disagreed with the code: migration 0004 and `instance`, a taken example number, zizmor's exemptions, `text.py`, the rating token, the secrets list, YouTube search's window (M3) | Medium | Sections 2 to 12, `CLAUDE.md` and the README |
+| Items over the cap had no policy, so search results could push curated posts out for good (M4) | Medium | One source at a time, configured sources only, and a waiting count in your footer (section 9, ASM-24) |
+| Deploys copied the Mac's working tree (M5) | Medium | `git archive origin/main`, with the revision recorded (REQ-60) |
+| Web search with every term invalid counted as a success (M6) | Medium | The source fails |
+| Static database passwords, and a superuser login over the network (M7) | Medium | TCP logins for the agent's role only and generated passwords; the rest accepted (REQ-62, section 16) |
+| Long titles didn't wrap, and the warning showed backticks, in the HTML email (M8, M9) | Medium | Wrapping and a viewport; the command in `<code>` |
+| The plain-text warning was in capitals, breaking `claude setup-token` (M10) | Low | `WARNING:` and the text as written |
+| No allowlist of domains or ports (M11) | Low | Port 443 only; any domain accepted as a risk (REQ-57) |
+| The database accepted TLS 1.2 static-RSA suites (M12) | Low | TLS 1.3 only, and an ECDSA certificate |
+| SMTP errors put email addresses in the log and the database (M13) | Low | Type and SMTP code only (section 10) |
+| The Workflow guard passed on an API error, past 3,000 files or on a rename, and covered only `.github/` (M14, M15) | Low | Fails closed, and covers `scripts/` and the checks' settings files |
+| Nothing flagged a vulnerability while no pull request was open (M16) | Low | The weekly audit |
+| The documented stuck-run email couldn't happen for scheduled runs (M17) | Low | Section 10 and the README describe what does happen |
+| Lower: SVG titles in page titles, unclassified SDK errors without a traceback, `backfill --limit 0`, lost usage of invalid sessions, a result near the timeout thrown away, collectors ignoring the deadline, `include` on types that ignore it, `None` cases nothing produced, NAT64 addresses, ASVS documentation gaps, and the email's rating links, structure, help line, dark mode and failure-email command (M18 to M32) | Low | Each fixed; section 14 lists what was checked |
+
+The same pull request does knackpack issue #13 for this repository: Claude review only reviews, which a script now checks (REQ-63), and every problem it finds blocks the merge, through the project's own prompt instead of Anthropic's `code-review` plugin (REQ-64). The issue's four open decisions were settled as section 12 describes: a problem must be confirmed, in scope and fixable; risks go in the summary; anything wrong blocks, but not taste; and claims about outside behavior block only as a request for evidence. knackpack's version bump doesn't apply here.
+
+Advisories that no reviewer graded were done too: the `db` container's capabilities, `no-new-privileges` and internal network; `sslmode=verify-full` forced in code; `defang` for look-alike dots and IP addresses; YouTube search's video IDs checked; look-alike domains shown as `xn--`; `fence` for hidden tag variants; the run deadline on a monotonic clock; the unit after `time-sync.target`, which on the Pi waits for nothing until a service activates that target (section 11); and the reasons and sentences sections 9, 10 and 16 lacked. Not done: hash-pinning the build backend, the repository's Actions policy, and Dependabot alerts, which are GitHub settings for you.
 
 **Third review, 2026-10-30, of the repository about to be published.** The same six reviewers reviewed all 55 files in parallel; the adjudicator confirmed the one High finding. None of them changed a file. Their findings merged into 30 issues, and you asked for every one to be fixed, however minor (REQ-54). The main ones:
 
@@ -986,7 +1079,7 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 | One malformed link from Claude dropped a whole web search (PY-F2) | Medium | `check_url` refuses malformed hosts and ports as blocked addresses |
 | `@claude` read strangers' text in threads you tagged (ARCH-F2, SEC-F2) | Medium | Only your own threads and comments, with a 30-minute limit |
 | A pull request could change its own checks (ADV-F2) | Medium | The Workflow guard check (section 12) |
-| The review plugin and the build backend weren't pinned (ARCH-F3, ADV-F3, SEC-F4) | Medium | Pinned to a commit and to exact versions |
+| The review plugin and the build backend weren't pinned (ARCH-F3, ADV-F3, SEC-F4) | Medium | Pinned to a commit and to exact versions; the fourth review's pull request later replaced the plugin with the project's own prompt (REQ-64) |
 | Rating emails named items by ID only (ARCH-F1) | Medium | A per-database token in the subject (section 7) |
 | Every source failing raised no alert (design-pattern review) | Medium | Section 10: a failure email after 3 such runs |
 | The deploy copy kept its own drifting exclude list (SLOP-F1) | Medium | `rsync` follows `.gitignore` |
@@ -1071,4 +1164,6 @@ The design-pattern review found no new pattern needed. One light one stays: a di
 3. Deploy on the Pi, following the README. That needs your go-ahead, because it enables the timer and sends real email. The Pi still holds a copy from before the rename (REQ-33), in `~/Projects/ai-news-agent`, and its image `ai-news-agent:local`. No containers, volumes, units or secrets were created for it. Deploy through the staging folder `~/Projects/newsletter-agent` to `/opt/newsletter-agent`, then remove the old folder and image.
 4. Over the first week, measure plan usage per run, including web search, and transcript success. Then tune the models, `SEARCH_MODEL` included, the threshold, the sources and the search terms.
 5. With the first real digest, tap one rating link on your phone and send the email, then confirm the next run's `check` or footer counts it. That's the first test of ratings against real Gmail.
-6. Add more newsletters, such as hardware, as folders under `config/newsletters/`.
+6. After a week of real runs, compare the waiting count with what each run fetches, and decide whether old items should age out (section 9).
+7. Turn on GitHub's "Keep my email addresses private" before the next merge in the browser, and decide the two GitHub settings in section 16.
+8. Add more newsletters, such as hardware, as folders under `config/newsletters/`.

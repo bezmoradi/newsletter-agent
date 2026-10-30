@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
@@ -75,10 +76,12 @@ DIGEST_SCHEMA: dict[str, Any] = {
 
 @dataclass
 class Run:
-    """The state of one run: counts, Claude usage and failure flags."""
+    """The state of one run: counts, Claude usage and failure flags. deadline is a
+    time.monotonic() value, so a change of the system clock doesn't move it.
+    """
 
     id: int
-    deadline: datetime
+    deadline: float
     counts: Counter[str] = field(default_factory=Counter)
     usage: dict[str, Any] = field(default_factory=dict)
     claude_stopped: bool = False
@@ -90,7 +93,7 @@ class Run:
     degraded: bool = False
 
     def past_deadline(self) -> bool:
-        return datetime.now(UTC) >= self.deadline
+        return time.monotonic() >= self.deadline
 
     @property
     def all_sources_failed(self) -> bool:
@@ -177,6 +180,9 @@ def _collect_source(
     except Exception as e:
         if isinstance(e, llm.ClaudeAuthError | llm.ClaudeUnavailable):
             run.claude_failed(e)
+        if isinstance(e, llm.ClaudeOutputError):
+            for spent in e.spent:
+                run.record_usage(spent)
         _source_failed(conn, run, row["id"], now, e, where)
         return
     for result in collected.claude:
@@ -260,6 +266,13 @@ def _source_failed(
     log.warning("source failed", extra={"fields": {**where, "error": detail}})
 
 
+def output_error_limit(batch_size: int) -> int:
+    """How many invalid scoring answers in a row stop Claude for the run: at least
+    MAX_OUTPUT_ERRORS, and enough for the retry and the halving to reach a single item.
+    """
+    return max(MAX_OUTPUT_ERRORS, 2 + batch_size.bit_length())
+
+
 def shares(total: int, newsletters: int, used: list[int]) -> int:
     """The next newsletter's part of a run-wide cap of total: an even share of what's left, so an
     early newsletter can't take it all, and a later one gets what earlier ones didn't use.
@@ -276,7 +289,8 @@ def enrich(conn: store.Connection, settings: Settings, run: Run) -> None:
     used: list[int] = []
     for newsletter in settings.newsletters:
         limit = shares(settings.max_items_per_run, len(settings.newsletters), used)
-        rows = store.items_to_enrich(conn, newsletter.key, limit) if limit else []
+        keys = [s.key for s in newsletter.sources]
+        rows = store.items_to_enrich(conn, newsletter.key, keys, limit) if limit else []
         used.append(len(rows))
         for row in rows:
             if run.past_deadline():
@@ -330,7 +344,10 @@ def assess(conn: store.Connection, settings: Settings, run: Run) -> None:
     used: list[int] = []
     for newsletter in settings.newsletters:
         limit = shares(settings.max_items_per_run, len(settings.newsletters), used)
-        rows = store.items_to_assess(conn, newsletter.key, limit, SCORE_EXCERPT) if limit else []
+        keys = [s.key for s in newsletter.sources]
+        rows = (
+            store.items_to_assess(conn, newsletter.key, keys, limit, SCORE_EXCERPT) if limit else []
+        )
         used.append(len(rows))
         ratings = store.recent_ratings(conn, newsletter.key, RATINGS_PROMPT_DAYS, RATINGS_PER_SIDE)
         conn.commit()
@@ -394,12 +411,14 @@ def _score_group(
         scored = _valid_scores(result.output, len(rows))
         run.output_errors = 0
     except llm.ClaudeOutputError as e:
+        for spent in e.spent:
+            run.record_usage(spent)
         run.output_errors += 1
         log.warning(
             "invalid scoring output",
             extra={"fields": {"newsletter": newsletter.key, "error": str(e), "size": len(rows)}},
         )
-        if run.output_errors >= MAX_OUTPUT_ERRORS:
+        if run.output_errors >= output_error_limit(settings.score_batch_size):
             raise llm.ClaudeUnavailable(
                 f"Claude returned invalid scoring output {run.output_errors} times in a row"
             ) from None
@@ -526,6 +545,8 @@ def _write_digest(
     try:
         result = llm.structured(prompt, DIGEST_SCHEMA, settings.digest_model)
     except llm.ClaudeOutputError as e:
+        for spent in e.spent:
+            run.record_usage(spent)
         log.warning(
             "invalid digest output",
             extra={"fields": {"newsletter": newsletter.key, "error": str(e)}},
@@ -564,14 +585,10 @@ def deliver(conn: store.Connection, settings: Settings, run: Run | None) -> int:
     """
     sent = 0
     token = store.feedback_token(conn)
-    for row in store.unsent_digests(conn, [n.key for n in settings.newsletters]):
-        newsletter = settings.newsletter(row["newsletter"])
+    newsletters = {n.key: n for n in settings.newsletters}
+    for row in store.unsent_digests(conn, list(newsletters)):
+        newsletter = newsletters[row["newsletter"]]
         where = {"digest": row["id"], "newsletter": row["newsletter"]}
-        if newsletter is None:
-            log.warning(
-                "digest left unsent: its newsletter is not configured", extra={"fields": where}
-            )
-            continue
         owner = settings.is_owner(newsletter)
         entries = store.digest_entries(conn, row["id"])
         summaries = {e["item_id"]: e["summary"] for e in row["body_json"].get("items", [])}
@@ -600,12 +617,13 @@ def deliver(conn: store.Connection, settings: Settings, run: Run | None) -> int:
         try:
             mail.send(email, settings.mail, newsletter.recipient)
         except Exception as e:
-            store.mark_send_error(conn, row["id"], f"{type(e).__name__}: {e}")
+            error = mail.error_summary(e)
+            store.mark_send_error(conn, row["id"], error)
             conn.commit()
             if run is not None:
                 run.counts["send_failures"] += 1
                 run.degraded = True
-            log.warning("digest not sent", extra={"fields": {**where, "error": str(e)}})
+            log.warning("digest not sent", extra={"fields": {**where, "error": error}})
             continue
         store.mark_sent(conn, row["id"])
         conn.commit()

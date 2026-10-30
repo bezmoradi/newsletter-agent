@@ -10,7 +10,10 @@ _TAG = re.compile(r"<[^>]+>")
 _SPACE = re.compile(r"\s+")
 _SCHEME_URL = re.compile(r"(?i)\b(?:https?|ftp)://\S+")
 _BARE_DOMAIN = re.compile(r"\b(?:[\w-]+\.)+[^\W\d_][\w-]{1,62}\b")
-_DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": "."})
+_BARE_IP = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
+_DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": ".", "\u2024": ".", "\ufe52": "."})
+_HIDDEN = r"[\s\u200b-\u200d\u2060\ufeff]*"
+_FENCED_TAG = re.compile(rf"(?i)<({_HIDDEN}/?{_HIDDEN})(item|feedback)")
 
 
 def storable(value: str) -> str:
@@ -40,13 +43,17 @@ def plain(value: str | None, limit: int = 2000) -> str | None:
 
 
 def defang(value: str) -> str:
-    """Remove URLs and break up every domain-like word, such as `example.com` or `Node.js`, so
-    text from Claude or a web page can't become a clickable link in an email.
+    """Remove URLs and break up every domain-like word, such as `example.com` or `Node.js`, and
+    every IPv4 address, so text from Claude or a web page can't become a clickable link in an
+    email. Look-alike dots count as dots.
     """
     without_links = _SCHEME_URL.sub("[link removed]", value.translate(_DOTS))
-    return _BARE_DOMAIN.sub(lambda m: m.group(0).replace(".", "[.]"), without_links)
+    broken = _BARE_DOMAIN.sub(lambda m: m.group(0).replace(".", "[.]"), without_links)
+    return _BARE_IP.sub(lambda m: m.group(0).replace(".", "[.]"), broken)
 
 
 def fence(value: str) -> str:
-    """Escape item and feedback tags, so fetched text can't open or close either in a prompt."""
-    return re.sub(r"(?i)<(/?)(item|feedback)", r"&lt;\1\2", value)
+    """Escape item and feedback tags, so fetched text can't open or close either in a prompt,
+    including when spaces or zero-width characters are put inside the tag.
+    """
+    return _FENCED_TAG.sub(r"&lt;\1\2", value)

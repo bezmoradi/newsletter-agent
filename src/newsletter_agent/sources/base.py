@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime
@@ -44,7 +45,18 @@ class Collected:
     claude: tuple[Structured, ...] = ()
 
 
-type Collector = Callable[[SourceConfig, SourceState, Settings, datetime], Collected]
+type Collector = Callable[[SourceConfig, SourceState, Settings, float], Collected]
+
+
+class DeadlinePassed(Exception):
+    """The run's deadline passed before a source finished, so the source fails rather than
+    record a success for work it skipped.
+    """
+
+
+def past(deadline: float) -> bool:
+    """True once the run's deadline, a time.monotonic() value, has passed."""
+    return time.monotonic() >= deadline
 
 
 def get_if_changed(

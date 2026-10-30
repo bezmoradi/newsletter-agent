@@ -1,7 +1,7 @@
 [Unit]
 Description=Newsletter agent: collect, score and email a digest
 Wants=network-online.target
-After=network-online.target docker.service
+After=network-online.target time-sync.target docker.service
 Requires=docker.service
 OnFailure=newsletter-agent-failure.service
 

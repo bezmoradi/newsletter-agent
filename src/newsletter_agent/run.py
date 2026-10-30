@@ -6,10 +6,11 @@ import contextlib
 import logging
 import os
 import threading
+import time
 from datetime import UTC, datetime, timedelta
 
 from newsletter_agent import mail, steps, store
-from newsletter_agent.settings import MailSettings, Settings
+from newsletter_agent.settings import MailSettings, Settings, revision
 
 log = logging.getLogger(__name__)
 
@@ -75,12 +76,17 @@ def _run(settings: Settings) -> int:
             abandoned = store.abandon_unfinished_runs(conn)
             current = steps.Run(
                 id=store.open_run(conn),
-                deadline=datetime.now(UTC) + timedelta(minutes=settings.run_deadline_minutes),
+                deadline=time.monotonic() + settings.run_deadline_minutes * 60,
             )
             log.info(
                 "run started",
                 extra={
-                    "fields": {"run": current.id, "migrations": applied, "abandoned": abandoned}
+                    "fields": {
+                        "run": current.id,
+                        "revision": revision(),
+                        "migrations": applied,
+                        "abandoned": abandoned,
+                    }
                 },
             )
             steps.read_ratings(conn, settings, current)
@@ -141,8 +147,9 @@ def _lock_held(conn: store.Connection, settings: Settings) -> int:
         return EXIT_OK
     reason = (
         f"a run that started at {started:%Y-%m-%d %H:%M} UTC still holds the run lock, so no "
-        "run can start; its container is probably stuck. On the Pi, remove it with "
-        "`sudo docker rm -f newsletter-agent-run`"
+        "run can start; the container of a run started by hand is probably stuck. On the Pi, "
+        "find it with `sudo docker ps --filter name=newsletter-agent` and remove it with "
+        "`sudo docker rm -f <name>`"
     )
     log.error("run lock held by a stuck run", extra={"fields": {"started": started.isoformat()}})
     return failed_exit(settings.mail, reason)

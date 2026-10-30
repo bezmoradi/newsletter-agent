@@ -10,15 +10,13 @@ from newsletter_agent.sources.base import Collected, SourceState, changed, get_i
 from newsletter_agent.urls import watch_url, youtube_video_id
 
 if TYPE_CHECKING:
-    from datetime import datetime
-
     from newsletter_agent.settings import Settings, SourceConfig
 
 FEED_URL = "https://www.youtube.com/feeds/videos.xml"
 
 
 def collect(
-    source: SourceConfig, state: SourceState, settings: Settings, deadline: datetime
+    source: SourceConfig, state: SourceState, settings: Settings, deadline: float
 ) -> Collected:
     assert source.channel_id is not None
     response = get_if_changed(FEED_URL, state, {"channel_id": source.channel_id})

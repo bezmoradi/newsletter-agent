@@ -8,7 +8,7 @@ import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncGenerator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, cast
 
 from claude_agent_sdk import (
@@ -57,9 +57,13 @@ class ClaudeUnavailable(ClaudeError):
 
 
 class ClaudeOutputError(ClaudeError):
-    """Claude answered, but without valid structured output."""
+    """Claude answered, but without valid structured output. spent holds the usage of the
+    sessions that produced nothing valid, so a caller can still count them.
+    """
 
-    pass
+    def __init__(self, message: str, spent: tuple[Structured, ...] = ()) -> None:
+        super().__init__(message)
+        self.spent = spent
 
 
 @dataclass(frozen=True)
@@ -111,6 +115,7 @@ async def _structured(
         max_turns=WEB_SEARCH_MAX_TURNS if web_search else MAX_TURNS,
     )
     signals = _Signals(expected_tools=sorted([STRUCTURED_TOOL, *tools]))
+    result: Structured | None = None
     try:
         async with asyncio.timeout(timeout):
             messages = cast(AsyncGenerator[Message, None], query(prompt=prompt, options=options))
@@ -121,8 +126,11 @@ async def _structured(
                     elif isinstance(message, AssistantMessage) and message.error:
                         signals.assistant_error = message.error
                     elif isinstance(message, ResultMessage):
-                        return _on_result(message, model, signals)
+                        result = _on_result(message, model, signals)
+                        break
     except TimeoutError:
+        if result is not None:
+            return result
         raise ClaudeUnavailable(f"no result within {timeout:.0f} s") from None
     except ResultError as e:
         data = e.data or {}
@@ -137,8 +145,11 @@ async def _structured(
     except Exception as e:
         if str(e).startswith(STARTUP_TIMEOUT):
             raise ClaudeUnavailable(f"Claude Code didn't start: {e}") from None
+        log.exception("unclassified Claude Code error")
         raise ClaudeAuthError(f"unclassified: {type(e).__name__}: {e}") from None
-    raise ClaudeOutputError("the stream ended without a result")
+    if result is None:
+        raise ClaudeOutputError("the stream ended without a result")
+    return result
 
 
 def _on_system(message: SystemMessage, signals: _Signals) -> None:
@@ -167,11 +178,19 @@ def _on_system(message: SystemMessage, signals: _Signals) -> None:
 def _on_result(message: ResultMessage, model: str, signals: _Signals) -> Structured:
     if signals.tools is None:
         raise ClaudeAuthError("Claude Code sent no init message, so its tools couldn't be checked")
+    spent = Structured(
+        output=None,
+        model=model,
+        tools=tuple(signals.tools),
+        usage=dict(message.usage or {}),
+        cost_usd=message.total_cost_usd,
+    )
     if message.is_error:
         signals.status = message.api_error_status or signals.status
         if message.subtype.startswith("error_max") or message.terminal_reason == "max_turns":
             raise ClaudeOutputError(
-                f"Claude stopped at a limit ({message.subtype}) without valid structured output"
+                f"Claude stopped at a limit ({message.subtype}) without valid structured output",
+                (spent,),
             )
         raise _classify(
             signals,
@@ -179,14 +198,8 @@ def _on_result(message: ResultMessage, model: str, signals: _Signals) -> Structu
             f"reason {message.terminal_reason}: {(message.result or '')[:300]}",
         )
     if message.structured_output is None:
-        raise ClaudeOutputError(f"no structured output: {(message.result or '')[:300]}")
-    return Structured(
-        output=storable_json(message.structured_output),
-        model=model,
-        tools=tuple(signals.tools),
-        usage=dict(message.usage or {}),
-        cost_usd=message.total_cost_usd,
-    )
+        raise ClaudeOutputError(f"no structured output: {(message.result or '')[:300]}", (spent,))
+    return replace(spent, output=storable_json(message.structured_output))
 
 
 def _classify(signals: _Signals, detail: str) -> ClaudeError:

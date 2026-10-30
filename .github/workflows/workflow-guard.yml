@@ -17,21 +17,33 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - name: Require the owner's label for changes under .github
+      - name: Require the owner's label for changes to the files that define the checks
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
+          ACTION: ${{ github.event.action }}
+          LABEL: ${{ github.event.label.name }}
+          GUARDED: '^(\.github/|scripts/|\.gitleaks\.toml$|\.squawk\.toml$|\.pre-commit-config\.yaml$)'
         run: |
-          changed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/files" --jq '.[].filename' | grep '^\.github/' || true)
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/files" > "$RUNNER_TEMP/files.json"
+          listed=$(jq -s 'add | length' "$RUNNER_TEMP/files.json")
+          total=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq '.changed_files')
+          paths=$(jq -rs 'add | .[] | .filename, (.previous_filename // empty)' "$RUNNER_TEMP/files.json")
+          changed=$(printf '%s\n' "$paths" | grep -E "$GUARDED" || true)
+          if [ "$listed" -ne "$total" ]; then
+            changed="$changed
+          (GitHub listed only $listed of the $total changed files, so the rest are unknown)"
+          fi
           if [ -z "$changed" ]; then
-            echo "This pull request changes nothing under .github/."
+            echo "This pull request changes none of the files that define the checks."
             exit 0
           fi
-          if gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' | grep -qx review-override; then
-            echo "The review-override label is on this pull request, so these changes under .github/ are allowed:"
+          if [ "$ACTION" = labeled ] && [ "$LABEL" = review-override ]; then
+            echo "The owner added the review-override label to this commit, so these changes are allowed:"
             echo "$changed"
             exit 0
           fi
-          echo "::error title=Workflow change::This pull request changes files under .github/, which define its own checks. The owner reads them and adds the review-override label. Changed:"
+          echo "::error title=Workflow change::This pull request changes files that define its own checks. The owner reads them and adds the review-override label after the latest push. Changed:"
           echo "$changed"
           exit 1

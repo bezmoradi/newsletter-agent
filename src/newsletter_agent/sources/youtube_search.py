@@ -7,10 +7,10 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from newsletter_agent import http
-from newsletter_agent.sources.base import Candidate, Collected, SourceState
+from newsletter_agent.sources.base import Candidate, Collected, DeadlinePassed, SourceState, past
 from newsletter_agent.sources.feed import parse_date
 from newsletter_agent.text import plain
-from newsletter_agent.urls import watch_url
+from newsletter_agent.urls import is_video_id, watch_url
 
 if TYPE_CHECKING:
     from newsletter_agent.settings import Settings, SourceConfig
@@ -23,11 +23,12 @@ INDEX_LAG = timedelta(hours=12)
 
 
 def collect(
-    source: SourceConfig, state: SourceState, settings: Settings, deadline: datetime
+    source: SourceConfig, state: SourceState, settings: Settings, deadline: float
 ) -> Collected:
-    """One search.list call per query. Any failed call fails the whole source, so publishedAfter
-    doesn't move past results it missed. Each search reaches 12 hours before the last success,
-    because YouTube indexes some videos hours after they are published.
+    """One search.list call per query. Any failed call, or the run's deadline passing before the
+    last query (DeadlinePassed), fails the whole source, so publishedAfter doesn't move past
+    results it missed. Each search reaches 12 hours before the last success, because YouTube
+    indexes some videos hours after they are published.
     """
     if not settings.youtube_api_key:
         raise RuntimeError("YOUTUBE_API_KEY is not set")
@@ -37,6 +38,8 @@ def collect(
         since = state.last_success_at - INDEX_LAG
     found: dict[str, Candidate] = {}
     for query in source.queries:
+        if past(deadline):
+            raise DeadlinePassed("the run deadline passed before every search term ran")
         response = http.get(
             SEARCH_URL,
             params={
@@ -53,7 +56,7 @@ def collect(
         for entry in json.loads(response.body).get("items", []):
             video_id = (entry.get("id") or {}).get("videoId")
             snippet = entry.get("snippet") or {}
-            if not video_id or video_id in found:
+            if not is_video_id(video_id) or video_id in found:
                 continue
             found[video_id] = Candidate(
                 external_id=video_id,

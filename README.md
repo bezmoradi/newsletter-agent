@@ -44,13 +44,13 @@ Each source has:
 
 | `type` | Fields |
 |---|---|
-| `feed` | `url` of an RSS or Atom feed |
+| `feed` | `url` of an RSS or Atom feed, and an optional `include`, a list of regular expressions for the URL paths to keep |
 | `sitemap` | `url` of a sitemap, and `include`, a list of regular expressions for the URL paths to keep |
 | `youtube` | `channel_id` |
 | `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. |
 | `web_search` | `queries`, the search terms. Claude searches the web for each term with its `WebSearch` tool, its only tool, and returns recent links; no other key is needed. All newsletters' terms together can't exceed `WEB_SEARCH_MAX_QUERIES`, because every search uses your Claude plan. |
 
-Add `enabled = false` to an entry to skip it. The first time a source is seen, its existing entries are stored as a baseline and not scored. The exceptions are feed items published within the last `BACKFILL_DAYS`, and web search results, which are always recent.
+Only `feed` and `sitemap` sources take `include`; on any other type the configuration is refused. Add `enabled = false` to an entry to skip it. The first time a source is seen, its existing entries are stored as a baseline and not scored. The exceptions are feed items published within the last `BACKFILL_DAYS`, and web search results, which are always recent.
 
 **`interests.md`** is the newsletter's interest profile, in plain prose. Claude scores the newsletter's items against it.
 
@@ -75,7 +75,7 @@ Add `enabled = false` to an entry to skip it. The first time a source is seen, i
 | `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key |
 | `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search |
 | `SCORE_THRESHOLD` | `6` | The lowest score, out of 10, that goes in a digest, unless a newsletter sets its own |
-| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them; the rest wait for the next run |
+| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting |
 | `DIGEST_MAX_ITEMS` | `15` | The most items in one email |
 | `SCORE_BATCH_SIZE` | `20` | Items per scoring call |
 | `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new |
@@ -91,14 +91,16 @@ The settings code removes every secret except `CLAUDE_CODE_OAUTH_TOKEN` from the
 
 The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs from `/opt/newsletter-agent`, which root owns. The units run as root, so they use only files your login account can't change.
 
-1. **Copy the code** from your Mac to the staging folder, running this in the repository:
+1. **Copy the latest reviewed commit on `main`** from your Mac to the staging folder, running this in the repository:
 
    ```bash
-   rsync -az --delete --exclude .git --filter=':- .gitignore' \
-     ./ <user>@<pi-host>:Projects/newsletter-agent/
+   git fetch origin
+   git archive origin/main | ssh <user>@<pi-host> \
+     'rm -rf ~/Projects/newsletter-agent && mkdir -p ~/Projects/newsletter-agent && tar -x -C ~/Projects/newsletter-agent'
+   git rev-parse origin/main | ssh <user>@<pi-host> 'cat > ~/Projects/newsletter-agent/REVISION'
    ```
 
-   `--filter=':- .gitignore'` makes rsync skip everything git ignores, so the copy holds exactly the repository's files: no `.venv`, caches, secrets or `*.local` notes. Before the first real deploy, add `-n -v` once to see the list without copying.
+   The copy holds exactly the files of that commit, whatever branch is checked out or changed on your Mac: no `.venv`, caches, secrets or `*.local` notes. Deploys come only from `main`, which passed every check. `REVISION` records the commit: the image is built with it, and `check`, each run's first log line and every failure email show it.
 
    Then, on the Pi, install it:
 
@@ -106,34 +108,36 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
    sudo rsync -a --delete --chown=root:root ~/Projects/newsletter-agent/ /opt/newsletter-agent/
    ```
 
-   **Warning:** both commands use `--delete`, which removes anything in the target folder that isn't in the repository. Keep nothing else in either folder; the secrets live in `/etc/newsletter-agent`. Run both to deploy a new version, then rebuild with step 3.
+   **Warning:** the first command empties the staging folder before copying, and this one uses `--delete`, which removes anything in `/opt/newsletter-agent` that isn't in the copy. Keep nothing else in either folder; the secrets live in `/etc/newsletter-agent`. Run both to deploy a new version, then rebuild with step 3.
 
-2. **Create the secrets and the database certificate** on the Pi. The secrets files are owned by root, readable only by root, and kept outside the repository. Postgres has two passwords: `POSTGRES_PASSWORD` for its admin account, and `AGENT_DB_PASSWORD` for the agent's own account, which owns only the agent's database.
+2. **Create the secrets and the database certificate** on the Pi. The secrets files are owned by root, readable only by root, and kept outside the repository. Postgres has two passwords: `POSTGRES_PASSWORD` for its admin account, and `AGENT_DB_PASSWORD` for the agent's own account, which owns only the agent's database. The first command generates both as random hex, which needs no escaping in `DATABASE_URL`, and never shows them on screen.
 
    ```bash
    sudo install -d -m 700 /etc/newsletter-agent
-   sudoedit /etc/newsletter-agent/db.env      # POSTGRES_PASSWORD=<one long random password> and AGENT_DB_PASSWORD=<another>
-   sudoedit /etc/newsletter-agent/agent.env   # the variables above; DATABASE_URL uses AGENT_DB_PASSWORD
-   sudo chmod 600 /etc/newsletter-agent/*.env
+   sudo sh -c 'umask 077 && printf "POSTGRES_PASSWORD=%s\nAGENT_DB_PASSWORD=%s\n" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > /etc/newsletter-agent/db.env'
+   sudoedit /etc/newsletter-agent/agent.env   # the variables above; DATABASE_URL uses AGENT_DB_PASSWORD from db.env
+   sudo chmod 600 /etc/newsletter-agent/db.env /etc/newsletter-agent/agent.env
    sudo install -d -m 755 /etc/newsletter-agent/db-tls
-   sudo openssl req -x509 -newkey rsa:3072 -nodes -days 3650 -subj /CN=db -addext subjectAltName=DNS:db \
+   sudo openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 -subj /CN=db -addext subjectAltName=DNS:db \
      -keyout /etc/newsletter-agent/db-tls/server.key -out /etc/newsletter-agent/db-tls/server.crt
    sudo chmod 600 /etc/newsletter-agent/db-tls/server.key
    sudo chmod 644 /etc/newsletter-agent/db-tls/server.crt
    ```
 
-   The certificate lets the agent encrypt its database connection and check that it reached the `db` container. The key stays readable by root only: the `db` container copies it, as root, to a private file of its own each time it starts. The agent refuses a connection without TLS. The database's accounts are created on Postgres's first start, from `db/init-agent.sql`; changing either password later means changing it in Postgres too, with `ALTER ROLE`.
+   To copy `AGENT_DB_PASSWORD` into `DATABASE_URL`, open both files in one `sudoedit /etc/newsletter-agent/db.env /etc/newsletter-agent/agent.env`.
+
+   The certificate lets the agent encrypt its database connection and check that it reached the `db` container: the agent always connects with `sslmode=verify-full`, whatever `DATABASE_URL` says, and refuses a connection without TLS. The database accepts only TLS 1.3, and over the network only the agent's account can sign in; the admin account works only inside the `db` container, as in the maintenance commands below. The key stays readable by root only: the `db` container copies it, as root, to a private file of its own each time it starts. The database's accounts are created on Postgres's first start, from `db/init-agent.sql`; "Maintenance" says how to change a password later.
 
 3. **Build the image, start Postgres, and check everything:**
 
    ```bash
    cd /opt/newsletter-agent
-   sudo docker compose build agent
+   sudo env REVISION="$(cat REVISION)" docker compose build agent
    sudo docker compose up -d db
    sudo docker compose run --rm -T agent check
    ```
 
-   Every line should start with `ok`. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
+   Every line should start with `ok`, and the first one names the revision you copied. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
 
 4. **Install the systemd units:**
 
@@ -148,7 +152,7 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
 
    ```bash
    sudo systemctl start newsletter-agent.service
-   journalctl -u newsletter-agent -f
+   sudo journalctl -u newsletter-agent -f
    ```
 
    The first run stores most existing entries as a baseline and scores at most `MAX_ITEMS_PER_RUN` items.
@@ -176,7 +180,7 @@ Run these on the Pi from `/opt/newsletter-agent`.
 |---|---|
 | Check the configuration and every connection | `sudo docker compose run --rm -T agent check` |
 | Run now | `sudo systemctl start newsletter-agent.service` |
-| Read today's log | `journalctl -u newsletter-agent --since today` |
+| Read today's log | `sudo journalctl -u newsletter-agent --since today` |
 | See recent runs | `sudo docker compose exec db psql -U newsletter_agent -c "select id, started_at, status, error from runs order by id desc limit 5"` |
 | Resend digests that failed to send | `sudo docker compose run --rm -T agent send-pending` |
 | Score older entries of one source | `sudo docker compose run --rm -T agent backfill --newsletter ai --source anthropic --since 2026-10-01` |
@@ -200,7 +204,7 @@ See the stored ratings with:
 sudo docker compose exec db psql -U newsletter_agent -c "select f.sent_at, f.liked, i.title from feedback f join items i on i.id = f.item_id order by f.sent_at desc limit 20"
 ```
 
-**A stuck run.** If a run's container ever survives its unit, it keeps the run lock, and each later run sends a failure email saying a run "still holds the run lock". Remove it with `sudo docker rm -f newsletter-agent-run`; the next run marks it `abandoned`.
+**A stuck run.** If a scheduled run's container ever outlives its unit, the next scheduled run can't start: Docker refuses a second container named `newsletter-agent-run`, so that unit fails at once. Its clean-up step removes the old container, and you get the generic notice that the run stopped before it could report. The run after that marks the old run `abandoned` and works normally. A run you started by hand with `docker compose run` is different: if it hangs, it keeps the run lock, and each scheduled run sends a failure email saying a run "still holds the run lock". Find its container with `sudo docker ps --filter name=newsletter-agent` and remove it with `sudo docker rm -f <name>`.
 
 **What a missing email means.** No email can mean a quiet day, but also a Pi that's off or a broken Gmail password, because email is the only alert channel. Each digest's footer counts the runs since the last digest. If several days pass without an email, check the log.
 
@@ -216,7 +220,9 @@ sudo docker compose exec db psql -U newsletter_agent -c "select f.sent_at, f.lik
 - **After changing your Google password,** create a new app password and replace `SMTP_APP_PASSWORD`. Google revokes app passwords when the password changes.
 - **Edit sources, search terms or interests** in `config/newsletters/` in the repository, then copy the code to the Pi again (step 1). Don't edit them on the Pi: the next deploy would overwrite the change. The folder is mounted into the container, so the next run uses it without a rebuild. Changing a source's type, URL, channel or include rules makes its next collection start again from a baseline, so old entries aren't scored as new.
 - **Turn transcripts off** with `TRANSCRIPTS_ENABLED=false` if YouTube blocks the Pi. Each blocked video shows `IpBlocked` in `item_content.error`, and videos are scored on their title and description either way. YouTube blocked transcript requests from the home network on 2026-10-30, after about two dozen test requests that day.
-- **Never edit a migration file that a database has already applied.** Add a new numbered file in `src/newsletter_agent/migrations/`, such as `0004_add_column.sql`; the next run applies it.
+- **Never edit a migration file that a database has already applied.** Add a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there, such as `<next number>_add_column.sql`; the next run applies it.
+- **Change a database password** when you want to, or if `db.env` was ever exposed. In `/opt/newsletter-agent`, run `sudo docker compose exec db psql -U postgres -c '\password newsletter_agent'` (or `'\password postgres'` for the admin account), and enter a new value from `openssl rand -hex 24` at the prompt. Then put it in `db.env`, and for the agent's account in `DATABASE_URL` in `agent.env`, with `sudoedit`.
+- **Replace the database certificate** before it expires, 10 years after you made it, or if its key was ever exposed: make a new pair with the commands of step 2, then run `sudo docker compose up -d --force-recreate db`. The agent reads the new certificate on its next run.
 - **Before upgrading `claude-agent-sdk`,** rebuild and run `check` with the real token, then again with an invalid one. The invalid run must report `ClaudeAuthError`. A new SDK version may change how the OAuth token is read.
 - **Stop everything and keep the data** with `sudo docker compose down`.
 
@@ -242,7 +248,7 @@ uv run pre-commit run --all-files --hook-stage pre-push
 2. Work on a branch, and push it.
 3. Open a pull request with `Closes #<issue number>` in its description, or link the issue under Development in the pull request's sidebar, then re-run the PR hygiene job.
 
-GitHub Actions then runs 17 checks, from PR hygiene to the secret scan. ARCHITECTURE.md section 12 says what each one checks. One of them, Claude review, has Claude review the pull request and post inline comments, and it fails if Claude posts any. Fix the findings and push, which runs it again. If Claude is wrong, or it can't review because the pull request changes `claude-code-review.yml`, add the `review-override` label and re-run the job. To ask it something on a pull request or an issue, write a comment that mentions `@claude`, such as `@claude check this against CLAUDE.md`. Both use your Claude plan, and only answer you. A rule on `main` blocks direct pushes and any merge while a check is red, Claude review included.
+GitHub Actions then runs 17 checks, from PR hygiene to the secret scan. ARCHITECTURE.md section 12 says what each one checks. One of them, Claude review, has Claude review the pull request. Every problem it finds blocks the merge, however minor: anything wrong, unclear, inconsistent or out of date. It posts an inline comment for each, and the check fails. It only reviews: it can read the pull request and comment on it, but never change a file, commit or push, and `scripts/check_review_workflow.py` checks the settings that keep it so. Fix the findings and push, which runs it again. If Claude is wrong, add the `review-override` label after your latest push. Adding it runs Claude review and the Workflow guard again, and both pass for that commit only: the next push needs Claude's review again, or the label removed and added again. The Workflow guard fails a pull request that changes `.github/`, `scripts/` or a check's settings file until you add the label. To ask it something on a pull request or an issue, write a comment that mentions `@claude`, such as `@claude check this against CLAUDE.md`. Both use your Claude plan, and only answer you. A rule on `main` blocks direct pushes and any merge while a check is red, Claude review included.
 
 **This repository is public.** Keep personal details, your machines' network and access details, and secrets out of every commit, issue and comment. Git ignores any file with `.local` in its name, so private notes can live in one, such as `CLAUDE.local.md`, which Claude Code also loads beside `CLAUDE.md`.
 
