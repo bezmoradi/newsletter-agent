@@ -9,8 +9,8 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from newsletter_agent import llm, prompts
-from newsletter_agent.http import FetchError, check_url, describe
-from newsletter_agent.sources.base import Candidate, Collected, SourceState
+from newsletter_agent.http import FetchError, check_url, describe, https
+from newsletter_agent.sources.base import Candidate, Collected, SourceState, past
 from newsletter_agent.sources.feed import parse_date
 from newsletter_agent.text import plain
 from newsletter_agent.urls import MAX_URL_LENGTH, canonical_url, is_web_url
@@ -49,30 +49,39 @@ SCHEMA: dict[str, Any] = {
 
 
 def collect(
-    source: SourceConfig, state: SourceState, settings: Settings, deadline: datetime
+    source: SourceConfig, state: SourceState, settings: Settings, deadline: float
 ) -> Collected:
     """One Claude session with WebSearch per search term, starting none once the run's deadline
-    has passed. A term whose output is invalid is skipped; a sign-in or availability failure stops
-    the source and is raised. Claude's links are kept only if they are plain http or https URLs
-    whose host resolves to public addresses; the enrich step fetches them, which checks again.
+    has passed. A term whose output is invalid is skipped, but when every term's output is invalid
+    the source fails with ClaudeOutputError; a sign-in or availability failure stops the source and
+    is raised. Claude's links are kept only if they are plain http or https URLs whose host
+    resolves to public addresses; the enrich step fetches them, which checks again.
     """
     days = _window_days(state.last_success_at)
     found: dict[str, Candidate] = {}
-    calls = []
+    calls: list[llm.Structured] = []
+    valid = 0
     for term in source.queries:
-        if datetime.now(UTC) >= deadline:
+        if past(deadline):
             log.warning("web search stopped at the run deadline", extra={"fields": {"term": term}})
             break
         try:
             result, candidates = search(term, days, settings.search_model)
         except llm.ClaudeOutputError as e:
+            calls.extend(e.spent)
             log.warning(
                 "web search term skipped", extra={"fields": {"term": term, "error": str(e)}}
             )
             continue
+        valid += 1
         calls.append(result)
         for candidate in candidates:
             found.setdefault(candidate.external_id, candidate)
+    else:
+        if not valid:
+            raise llm.ClaudeOutputError(
+                f"all {len(source.queries)} web search terms returned invalid output", tuple(calls)
+            )
     return Collected(candidates=tuple(found.values()), recent_only=True, claude=tuple(calls))
 
 
@@ -120,7 +129,7 @@ def _page_url(value: Any) -> str | None:
     if parts.username is not None or parts.password is not None:
         return None
     try:
-        check_url(url)
+        check_url(https(url))
     except FetchError as e:
         log.info(
             "web search link dropped", extra={"fields": {"url": describe(url), "error": str(e)}}

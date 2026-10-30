@@ -11,12 +11,16 @@ FROM python:3.12-slim@sha256:aa943ce411423c7582288f18707ff66eddcbaeb510502d747a7
 RUN useradd --system --uid 10001 --no-create-home --home-dir /tmp/home app
 COPY --from=build /app/.venv /app/.venv
 COPY config /app/config
+ARG REVISION=unknown
+LABEL org.opencontainers.image.revision=$REVISION
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     HOME=/tmp/home \
     CLAUDE_CONFIG_DIR=/tmp/claude \
     DISABLE_AUTOUPDATER=1 \
-    NEWSLETTER_AGENT_CONFIG_DIR=/app/config
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
+    NEWSLETTER_AGENT_CONFIG_DIR=/app/config \
+    NEWSLETTER_AGENT_REVISION=$REVISION
 WORKDIR /tmp
 USER 10001
 ENTRYPOINT ["newsletter-agent"]

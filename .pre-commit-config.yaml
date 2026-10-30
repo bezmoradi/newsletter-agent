@@ -59,6 +59,12 @@ repos:
         entry: uv run --locked zizmor --offline
         language: system
         files: ^\.github/workflows/
+      - id: review-only-reviews
+        name: Claude review only reviews
+        entry: python3 scripts/check_review_workflow.py
+        language: system
+        pass_filenames: false
+        files: ^(\.github/workflows/claude-code-review\.yml|scripts/check_review_workflow\.py)$
       - id: mypy
         name: Types
         entry: uv run --locked mypy

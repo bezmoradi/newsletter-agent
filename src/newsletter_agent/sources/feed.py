@@ -59,7 +59,7 @@ def parse(body: bytes, base_url: str = "") -> list[Candidate]:
 
 
 def collect(
-    source: SourceConfig, state: SourceState, settings: Settings, deadline: datetime
+    source: SourceConfig, state: SourceState, settings: Settings, deadline: float
 ) -> Collected:
     assert source.url is not None
     response = get_if_changed(source.url, state)

@@ -14,6 +14,8 @@ services:
       - -c
       - ssl=on
       - -c
+      - ssl_min_protocol_version=TLSv1.3
+      - -c
       - ssl_cert_file=/run/db-tls/server.crt
       - -c
       - ssl_key_file=/run/postgresql/server.key
@@ -23,6 +25,18 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_DB: postgres
     env_file: ${NEWSLETTER_AGENT_ENV_DIR:-/etc/newsletter-agent}/db.env
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - backend
     volumes:
       - db-data:/var/lib/postgresql
       - ./db/init-agent.sql:/docker-entrypoint-initdb.d/10-agent.sql:ro
@@ -41,7 +55,10 @@ services:
         max-file: "3"
 
   agent:
-    build: .
+    build:
+      context: .
+      args:
+        REVISION: ${REVISION:-unknown}
     image: newsletter-agent:local
     profiles: ["agent"]
     restart: "no"
@@ -56,6 +73,9 @@ services:
     security_opt:
       - no-new-privileges:true
     pids_limit: 256
+    networks:
+      - backend
+      - default
     tmpfs:
       - /tmp:size=512m
     cpus: 2
@@ -67,6 +87,10 @@ services:
       options:
         max-size: 10m
         max-file: "3"
+
+networks:
+  backend:
+    internal: true
 
 volumes:
   db-data:

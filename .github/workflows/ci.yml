@@ -66,6 +66,7 @@ jobs:
           version: "0.11.2"
           enable-cache: false
       - run: docker run --rm --network none -v "$PWD:/repo:ro" -w /repo rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+      - run: python3 scripts/check_review_workflow.py
       - env:
           GH_TOKEN: ${{ github.token }}
         run: uv run --locked --only-group dev zizmor .github/workflows

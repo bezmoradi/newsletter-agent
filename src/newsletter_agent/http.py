@@ -28,6 +28,8 @@ REQUEST_DEADLINE = 90
 CHUNK = 64 * 1024
 USER_AGENT = "newsletter-agent/0.1 (personal use)"
 REDIRECT_CODES = frozenset({301, 302, 303, 307, 308})
+HTTPS_PORT = 443
+NAT64_PREFIX = ipaddress.ip_network("64:ff9b::/96")
 
 
 class FetchError(Exception):
@@ -96,9 +98,14 @@ def describe(url: str) -> str:
 
 
 def is_public(address: str) -> bool:
+    """True for a globally routable unicast address. An IPv4-mapped or NAT64 (64:ff9b::/96)
+    address is judged by the IPv4 address it carries.
+    """
     ip = ipaddress.ip_address(address)
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
+    elif isinstance(ip, ipaddress.IPv6Address) and ip in NAT64_PREFIX:
+        ip = ipaddress.IPv4Address(ip.packed[-4:])
     return ip.is_global and not ip.is_multicast
 
 
@@ -115,18 +122,23 @@ def https(url: str) -> str:
 
 def check_url(url: str) -> tuple[str, ...]:
     """Return the addresses the URL's host resolves to. Raise BlockedAddress unless the URL is
-    well formed, http or https, and every one of those addresses is globally routable.
+    well formed, http or https, names no port other than the scheme's default (443 for https),
+    and every one of those addresses is globally routable.
     """
     try:
         parts = urlsplit(url)
         host = parts.hostname
-        port = parts.port or (443 if parts.scheme == "https" else 80)
+        port = parts.port or (HTTPS_PORT if parts.scheme == "https" else 80)
     except ValueError:
         raise BlockedAddress(f"malformed URL: {describe(url)}") from None
     if parts.scheme not in ("http", "https"):
         raise BlockedAddress(f"scheme {parts.scheme!r} is not allowed: {describe(url)}")
     if not host:
         raise BlockedAddress(f"no host in {describe(url)}")
+    if "%" in host:
+        raise BlockedAddress(f"malformed host in {describe(url)}")
+    if parts.scheme == "https" and port != HTTPS_PORT:
+        raise BlockedAddress(f"port {port} is not allowed: {describe(url)}")
     try:
         addresses = [str(ipaddress.ip_address(host))]
     except ValueError:

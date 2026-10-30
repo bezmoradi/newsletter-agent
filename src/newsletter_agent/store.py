@@ -38,7 +38,8 @@ class InsecureConnection(Exception):
 
 
 def connect(url: str, *, autocommit: bool = False) -> Connection:
-    """Connect with a 10 s connect timeout and a 60 s statement timeout, over TLS only. Raises
+    """Connect with a 10 s connect timeout and a 60 s statement timeout, over TLS that checks the
+    server's certificate and host name (sslmode=verify-full, whatever DATABASE_URL says). Raises
     MalformedUrl, without the URL's text, when DATABASE_URL can't be parsed, because psycopg's own
     message would include the password, and InsecureConnection when the connection isn't
     encrypted.
@@ -46,6 +47,7 @@ def connect(url: str, *, autocommit: bool = False) -> Connection:
     try:
         conn = psycopg.connect(
             url,
+            sslmode="verify-full",
             connect_timeout=10,
             options="-c statement_timeout=60000",
             autocommit=autocommit,
@@ -283,12 +285,22 @@ def record_source_failure(conn: Connection, source_id: int, *, now: datetime, er
     )
 
 
-def items_to_enrich(conn: Connection, newsletter: str, limit: int) -> list[Row]:
+def items_to_enrich(
+    conn: Connection, newsletter: str, source_keys: list[str], limit: int
+) -> list[Row]:
+    """Up to limit new items of the sources in source_keys, taken one source at a time: each
+    source's newest item first, then each source's second newest, and so on, so a busy source
+    can't crowd out the others.
+    """
     return conn.execute(
-        "select i.id, i.external_id, i.url, i.title, s.type as source_type from items i "
-        "join sources s on s.id = i.source_id where i.newsletter = %s and i.state = 'new' "
-        "order by coalesce(i.published_at, i.first_seen_at) desc, i.id desc limit %s",
-        (newsletter, limit),
+        "select id, external_id, url, title, source_type from (select i.id, i.external_id, "
+        "i.url, i.title, s.type as source_type, "
+        "coalesce(i.published_at, i.first_seen_at) as sorted_at, row_number() over "
+        "(partition by i.source_id order by coalesce(i.published_at, i.first_seen_at) desc, "
+        "i.id desc) as source_rank from items i join sources s on s.id = i.source_id "
+        "where i.newsletter = %s and s.key = any(%s) and i.state = 'new') ranked "
+        "order by source_rank, sorted_at desc, id desc limit %s",
+        (newsletter, source_keys, limit),
     ).fetchall()
 
 
@@ -314,14 +326,24 @@ def save_content(
     )
 
 
-def items_to_assess(conn: Connection, newsletter: str, limit: int, excerpt: int) -> list[Row]:
+def items_to_assess(
+    conn: Connection, newsletter: str, source_keys: list[str], limit: int, excerpt: int
+) -> list[Row]:
+    """Up to limit fetched items of the sources in source_keys, taken one source at a time like
+    items_to_enrich, each with the first excerpt characters of its text.
+    """
     return conn.execute(
-        "select i.id, i.url, i.title, i.summary, i.published_at, s.key as source_key, "
-        "left(c.text, %s) as excerpt from items i join sources s on s.id = i.source_id "
+        "select id, url, title, summary, published_at, source_key, excerpt from (select i.id, "
+        "i.url, i.title, i.summary, i.published_at, s.key as source_key, "
+        "left(c.text, %s) as excerpt, coalesce(i.published_at, i.first_seen_at) as sorted_at, "
+        "row_number() over (partition by i.source_id order by "
+        "coalesce(i.published_at, i.first_seen_at) desc, i.id desc) as source_rank "
+        "from items i join sources s on s.id = i.source_id "
         "left join item_content c on c.item_id = i.id "
-        "where i.newsletter = %s and i.state in ('enriched', 'enrich_failed') "
-        "order by coalesce(i.published_at, i.first_seen_at) desc, i.id desc limit %s",
-        (excerpt, newsletter, limit),
+        "where i.newsletter = %s and s.key = any(%s) "
+        "and i.state in ('enriched', 'enrich_failed')) ranked "
+        "order by source_rank, sorted_at desc, id desc limit %s",
+        (excerpt, newsletter, source_keys, limit),
     ).fetchall()
 
 
@@ -479,9 +501,9 @@ def recent_ratings(conn: Connection, newsletter: str, days: int, per_side: int) 
 
 
 def health(conn: Connection, newsletter: str, source_keys: list[str]) -> Row:
-    """One newsletter's failing and silent sources among source_keys, its unscorable items, the
-    runs since its last sent digest, and the owner's latest rating of each item, counted by
-    source.
+    """One newsletter's failing and silent sources among source_keys, its items waiting to be
+    fetched or scored and its unscorable items, the runs since its last sent digest, and the
+    owner's latest rating of each item, counted by source.
     """
     failing = conn.execute(
         "select key, consecutive_failures, last_error from sources "
@@ -495,6 +517,12 @@ def health(conn: Connection, newsletter: str, source_keys: list[str]) -> Row:
         "order by key",
         (newsletter, source_keys),
     ).fetchall()
+    waiting = conn.execute(
+        "select count(*) as n from items i join sources s on s.id = i.source_id "
+        "where i.newsletter = %s and s.key = any(%s) "
+        "and i.state in ('new', 'enriched', 'enrich_failed')",
+        (newsletter, source_keys),
+    ).fetchone()
     failed_items = conn.execute(
         "select count(*) as n from items where newsletter = %s and state = 'assess_failed'",
         (newsletter,),
@@ -517,6 +545,7 @@ def health(conn: Connection, newsletter: str, source_keys: list[str]) -> Row:
     return {
         "failing_sources": failing,
         "silent_sources": [r["key"] for r in silent],
+        "waiting": waiting["n"] if waiting else 0,
         "assess_failed": failed_items["n"] if failed_items else 0,
         "runs": runs or {"total": 0, "partial": 0, "failed": 0},
         "ratings": ratings,

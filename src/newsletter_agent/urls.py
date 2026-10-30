@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import re
+from typing import TypeGuard
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com"})
-_VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+_VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
 MAX_URL_LENGTH = 2000
+
+
+def is_video_id(value: object) -> TypeGuard[str]:
+    return isinstance(value, str) and _VIDEO_ID.fullmatch(value) is not None
 
 
 def watch_url(video_id: str) -> str:
@@ -25,9 +30,7 @@ def youtube_video_id(url: str) -> str | None:
             candidate = parts.path.split("/")[2]
     elif host == "youtu.be":
         candidate = parts.path.lstrip("/").split("/")[0]
-    if candidate and _VIDEO_ID.match(candidate):
-        return candidate
-    return None
+    return candidate if is_video_id(candidate) else None
 
 
 def canonical_url(url: str) -> str:
@@ -64,5 +67,11 @@ def is_web_url(url: str | None) -> bool:
 
 
 def domain(url: str) -> str:
-    host = (urlsplit(url).hostname or "").lower()
-    return host.removeprefix("www.")
+    """The URL's host without www., in ASCII, so an international look-alike of a familiar
+    domain shows in its xn-- form.
+    """
+    host = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    try:
+        return host.encode("idna").decode("ascii")
+    except UnicodeError:
+        return host

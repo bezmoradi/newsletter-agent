@@ -62,6 +62,7 @@ class _Extractor(HTMLParser):
         self.skip_depth = 0
         self.main_depth = 0
         self.in_title = False
+        self.title_done = False
         self.title_parts: list[str] = []
         self.og_title: str | None = None
         self.all_parts: list[str] = []
@@ -73,7 +74,7 @@ class _Extractor(HTMLParser):
         elif tag in MAIN:
             self.main_depth += 1
         elif tag == "title":
-            self.in_title = True
+            self.in_title = not self.skip_depth and not self.title_done
         elif tag == "meta":
             values = dict(attrs)
             if values.get("property") == "og:title" and values.get("content"):
@@ -86,8 +87,9 @@ class _Extractor(HTMLParser):
             self.skip_depth = max(0, self.skip_depth - 1)
         elif tag in MAIN:
             self.main_depth = max(0, self.main_depth - 1)
-        elif tag == "title":
+        elif tag == "title" and self.in_title:
             self.in_title = False
+            self.title_done = True
         if tag in BLOCK:
             self._break()
 
@@ -107,9 +109,9 @@ class _Extractor(HTMLParser):
             self.main_parts.append("\n")
 
 
-def decode(body: bytes, headers: Message | None = None) -> str:
+def decode(body: bytes, headers: Message) -> str:
     """Decode with the header's charset, else a meta charset, else UTF-8. Never raises."""
-    charset = headers.get_content_charset() if headers is not None else None
+    charset = headers.get_content_charset()
     if not charset:
         match = _CHARSET.search(body[:4096])
         charset = match.group(1).decode("ascii", errors="replace") if match else "utf-8"

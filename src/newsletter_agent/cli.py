@@ -24,6 +24,7 @@ from newsletter_agent.settings import (
     load_mail_settings,
     load_settings,
     recipient_var,
+    revision,
     take_secrets,
 )
 
@@ -84,9 +85,18 @@ def _parser() -> argparse.ArgumentParser:
     backfill.add_argument(
         "--since", required=True, type=date.fromisoformat, help="a date like 2026-10-01"
     )
-    backfill.add_argument("--limit", type=int, help="at most this many; default MAX_ITEMS_PER_RUN")
+    backfill.add_argument(
+        "--limit", type=_positive_int, help="at most this many; default MAX_ITEMS_PER_RUN"
+    )
     sub.add_parser("notify-failure", help="email a notice that the scheduled run died")
     return parser
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise argparse.ArgumentTypeError(f"must be 1 or more, got {number}")
+    return number
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -132,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         args.newsletter,
         args.source,
         args.since,
-        args.limit or settings.max_items_per_run,
+        settings.max_items_per_run if args.limit is None else args.limit,
     )
 
 
@@ -198,7 +208,8 @@ def _check(settings: Settings, skip: set[str]) -> int:
     report(
         "config",
         True,
-        f"{len(settings.newsletters)} newsletter(s); score model {settings.score_model}, "
+        f"revision {revision()}; {len(settings.newsletters)} newsletter(s); score model "
+        f"{settings.score_model}, "
         f"digest model {settings.digest_model}; transcripts "
         f"{'on' if settings.transcripts_enabled else 'off'}; YouTube search terms "
         f"{sum(n.search_terms('youtube_search') for n in settings.newsletters)} of "

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import tomllib
 from collections.abc import MutableMapping
@@ -31,6 +32,9 @@ _KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _CHANNEL_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
 SOURCE_TYPES = ("feed", "sitemap", "youtube", "youtube_search", "web_search")
 SEARCH_TYPES = ("youtube_search", "web_search")
+FILTERED_TYPES = ("feed", "sitemap")
+REVISION_VAR = "NEWSLETTER_AGENT_REVISION"
+_REVISION_RE = re.compile(r"[0-9a-f]{7,40}")
 
 
 class ConfigError(Exception):
@@ -110,6 +114,12 @@ class Settings:
 
     def is_owner(self, newsletter: NewsletterConfig) -> bool:
         return newsletter.recipient.casefold() == self.mail.smtp_username.casefold()
+
+
+def revision() -> str:
+    """The commit the running image was built from, as the deploy recorded it, or "unknown"."""
+    value = os.environ.get(REVISION_VAR, "")
+    return value if _REVISION_RE.fullmatch(value) else "unknown"
 
 
 def recipient_var(newsletter_key: str) -> str:
@@ -281,6 +291,8 @@ def _parse_sources(entries: Any, path: Path) -> tuple[SourceConfig, ...]:
         include = entry.get("include") or []
         if not isinstance(include, list) or not all(isinstance(rule, str) for rule in include):
             raise ConfigError(f"{where}: 'include' must be a list of regular expressions")
+        if include and kind not in FILTERED_TYPES:
+            raise ConfigError(f"{where}: 'include' applies only to feed and sitemap sources")
         patterns = []
         for rule in include:
             try:

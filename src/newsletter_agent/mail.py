@@ -20,7 +20,7 @@ from html import escape
 from typing import Any
 from urllib.parse import quote
 
-from newsletter_agent.settings import MailSettings
+from newsletter_agent.settings import MailSettings, revision
 from newsletter_agent.text import defang
 from newsletter_agent.urls import domain, is_web_url
 
@@ -34,6 +34,11 @@ IMAP_PORT = 993
 IMAP_TIMEOUT = 60
 TOKEN_WARNING_DAYS = 30
 MUTED = "color: #59636e;"
+LINK = "color: #0969da;"
+RATING_HELP = (
+    "Each rating link opens an email to yourself with the rating in its subject. Send it, and "
+    "the next run reads it from your Sent folder."
+)
 FEEDBACK_SUBJECT = "newsletter-agent feedback"
 MAX_FEEDBACK_MESSAGES = 500
 _FEEDBACK_RE = re.compile(
@@ -41,6 +46,7 @@ _FEEDBACK_RE = re.compile(
     re.IGNORECASE,
 )
 _LIST_RE = re.compile(rb'^\((?P<flags>[^)]*)\) (?:NIL|"(?:[^"\\]|\\.)*") (?P<name>.+)$')
+_CODE_RE = re.compile(r"`([^`]+)`")
 
 
 @dataclass(frozen=True)
@@ -94,18 +100,18 @@ def render_digest(
     fallback: bool,
     health: dict[str, Any] | None,
     feedback_to: str | None,
-    feedback_token: str | None,
+    feedback_token: str,
     token_days_left: int,
     today: date,
 ) -> Email:
     """Build the digest email. Every title, summary and the intro go through text.defang, every
-    HTML value is escaped, and links come only from stored item URLs, plus, when feedback_to and
-    feedback_token are set, the rating links built by feedback_link. With health set to None, the
-    email has no health footer and no token warning.
+    HTML value is escaped, and links come only from stored item URLs, plus, when feedback_to is
+    set, the rating links built by feedback_link. With health set to None, the email has no health
+    footer and no token warning.
     """
 
     def rating(item_id: int, *, liked: bool) -> str | None:
-        if not feedback_to or not feedback_token:
+        if not feedback_to:
             return None
         return feedback_link(feedback_to, item_id, feedback_token, liked=liked)
 
@@ -136,6 +142,8 @@ def render_digest(
         else None
     )
     footer = _health_lines(health, token_days_left) if health is not None else []
+    if feedback_to and items:
+        footer.append(RATING_HELP)
     heading = f"{name}, {today.day} {today:%B %Y}"
     count = len(items)
     return Email(
@@ -166,6 +174,8 @@ def _health_lines(health: dict[str, Any], token_days_left: int) -> list[str]:
         lines.append(f"Failing for 3 or more runs: {failing}")
     if health["silent_sources"]:
         lines.append(f"No new items in 14 days: {', '.join(health['silent_sources'])}")
+    if health["waiting"]:
+        lines.append(f"Items waiting to be fetched or scored: {health['waiting']}")
     if health["assess_failed"]:
         lines.append(f"Items Claude couldn't score after 3 tries: {health['assess_failed']}")
     if health["ratings"]:
@@ -185,7 +195,7 @@ def _text(
 ) -> str:
     out = []
     if warning:
-        out += [warning.upper(), ""]
+        out += [f"WARNING: {warning}", ""]
     out += [heading, ""]
     if opening:
         out += [opening, ""]
@@ -210,36 +220,44 @@ def _html(
 ) -> str:
     out = [
         '<!doctype html><html lang="en"><head><meta charset="utf-8">',
+        '<meta name="viewport" content="width=device-width, initial-scale=1">',
+        '<meta name="color-scheme" content="light">',
+        '<meta name="supported-color-schemes" content="light">',
         f"<title>{escape(heading)}</title></head>",
         '<body style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; '
-        'max-width: 640px; margin: 0 auto; padding: 16px; color: #1f2328; line-height: 1.5;">',
+        "max-width: 640px; margin: 0 auto; padding: 16px; color: #1f2328; background: #fff; "
+        'line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;">',
     ]
     if warning:
+        banner = _CODE_RE.sub(r"<code>\1</code>", escape(warning))
         out.append(
             '<p style="background: #fff8c5; border: 1px solid #d4a72c; padding: 8px 12px;">'
-            f"<strong>{escape(warning)}</strong></p>"
+            f"<strong>{banner}</strong></p>"
         )
     out.append(f'<h1 style="font-size: 20px;">{escape(heading)}</h1>')
     if opening:
         out.append(f"<p>{escape(opening)}</p>")
-    for item in items:
+    for n, item in enumerate(items, 1):
         title = escape(item.title)
         if item.url:
             title = (
                 f'<a href="{escape(item.url, quote=True)}" '
-                f'style="color: #0969da; text-decoration: none;">{title}</a>'
+                f'style="{LINK} text-decoration: none;">{title}</a>'
             )
         out += [
             '<div style="margin: 20px 0;">',
-            f'<p style="margin: 0; font-size: 16px; font-weight: 600;">{title}</p>',
+            f'<h2 style="margin: 0; font-size: 16px; font-weight: 600;">{n}. {title}</h2>',
             f'<p style="margin: 2px 0; font-size: 13px; {MUTED}">{escape(item.meta)}</p>',
             f'<p style="margin: 4px 0 0;">{escape(item.summary)}</p>',
         ]
         if item.more and item.less:
-            link = 'style="color: #0969da; text-decoration: none;"'
+            link = (
+                f'style="{LINK} text-decoration: underline; display: inline-block; '
+                'padding: 8px 0; margin-right: 24px;"'
+            )
             out.append(
-                f'<p style="margin: 4px 0 0; font-size: 13px;">'
-                f'<a href="{escape(item.more, quote=True)}" {link}>More like this</a> · '
+                '<p style="margin: 0; font-size: 15px;">'
+                f'<a href="{escape(item.more, quote=True)}" {link}>More like this</a>'
                 f'<a href="{escape(item.less, quote=True)}" {link}>Less like this</a></p>'
             )
         out.append("</div>")
@@ -260,12 +278,14 @@ def render_failure(reason: str, today: date) -> Email:
             f"Reason: {defang(reason)}",
             "",
             "On the Pi, see the log with:",
-            "  journalctl -u newsletter-agent --since today",
+            "  sudo journalctl -u newsletter-agent --since today",
             "",
             "and the latest runs with:",
-            "  cd /opt/newsletter-agent && sudo docker compose exec db "
-            'psql -U newsletter_agent -c "select id, started_at, status, error from runs '
-            'order by id desc limit 5"',
+            "  cd /opt/newsletter-agent",
+            "  sudo docker compose exec db psql -U newsletter_agent \\",
+            '    -c "select id, started_at, status, error from runs order by id desc limit 5"',
+            "",
+            f"Revision: {revision()}",
         ]
     )
     return Email(subject=f"Newsletter agent failed ({today:%Y-%m-%d})", text=text + "\n")
@@ -288,12 +308,26 @@ def send(email: Email, settings: MailSettings, to: str) -> None:
         smtp.send_message(message)
 
 
+def error_summary(error: Exception) -> str:
+    """The error as it may be logged or stored. SMTP errors quote email addresses, so they give
+    only their type and SMTP reply codes; any other error gives its type and message.
+    """
+    if isinstance(error, smtplib.SMTPRecipientsRefused):
+        codes = sorted({str(code) for code, _ in error.recipients.values()})
+        return " ".join([type(error).__name__, *codes])
+    if isinstance(error, smtplib.SMTPResponseException):
+        return f"{type(error).__name__} {error.smtp_code}"
+    if isinstance(error, smtplib.SMTPException):
+        return type(error).__name__
+    return f"{type(error).__name__}: {error}"
+
+
 def notify_failure(settings: MailSettings, reason: str) -> bool:
     """Send the failure email to SMTP_USERNAME; True when it went out. Never raises."""
     try:
         send(render_failure(reason, date.today()), settings, settings.smtp_username)
     except Exception as e:
-        log.error("failure email not sent", extra={"fields": {"error": f"{type(e).__name__}: {e}"}})
+        log.error("failure email not sent", extra={"fields": {"error": error_summary(e)}})
         return False
     log.info("failure email sent")
     return True
