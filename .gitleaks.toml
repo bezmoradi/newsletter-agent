@@ -1,0 +1,10 @@
+title = "newsletter-agent"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "anthropic-oauth-token"
+description = "Claude OAuth token from claude setup-token"
+regex = '''\b(sk-ant-oat01-[a-zA-Z0-9_\-]{93}AA)(?:[\x60'"\s;]|\\[nr]|$)'''
+keywords = ["sk-ant-oat01"]

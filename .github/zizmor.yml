@@ -1,0 +1,5 @@
+rules:
+  dangerous-triggers:
+    ignore:
+      - claude.yml
+      - workflow-guard.yml

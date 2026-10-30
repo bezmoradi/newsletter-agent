@@ -1,0 +1,72 @@
+name: newsletter-agent
+
+services:
+  db:
+    image: postgres:18@sha256:979bccfde35445db618c65107d27d08c6c21339d8dc3ad4c830c6633947be0e4
+    restart: unless-stopped
+    entrypoint:
+      - sh
+      - -c
+      - install -m 600 -o postgres -g postgres /run/db-tls/server.key /run/postgresql/server.key && exec docker-entrypoint.sh "$$@"
+      - db
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/run/db-tls/server.crt
+      - -c
+      - ssl_key_file=/run/postgresql/server.key
+      - -c
+      - hba_file=/etc/newsletter-agent-db/pg_hba.conf
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+    env_file: ${NEWSLETTER_AGENT_ENV_DIR:-/etc/newsletter-agent}/db.env
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./db/init-agent.sql:/docker-entrypoint-initdb.d/10-agent.sql:ro
+      - ./db/pg_hba.conf:/etc/newsletter-agent-db/pg_hba.conf:ro
+      - ${NEWSLETTER_AGENT_ENV_DIR:-/etc/newsletter-agent}/db-tls:/run/db-tls:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U newsletter_agent -d newsletter_agent"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  agent:
+    build: .
+    image: newsletter-agent:local
+    profiles: ["agent"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: ${NEWSLETTER_AGENT_ENV_DIR:-/etc/newsletter-agent}/agent.env
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    tmpfs:
+      - /tmp:size=512m
+    cpus: 2
+    volumes:
+      - ./config:/app/config:ro
+      - ${NEWSLETTER_AGENT_ENV_DIR:-/etc/newsletter-agent}/db-tls/server.crt:/run/db-tls/server.crt:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  db-data:

@@ -1,0 +1,37 @@
+name: Workflow guard
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-guard:
+    name: Workflow guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require the owner's label for changes under .github
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          changed=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/files" --jq '.[].filename' | grep '^\.github/' || true)
+          if [ -z "$changed" ]; then
+            echo "This pull request changes nothing under .github/."
+            exit 0
+          fi
+          if gh pr view "$NUMBER" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name' | grep -qx review-override; then
+            echo "The review-override label is on this pull request, so these changes under .github/ are allowed:"
+            echo "$changed"
+            exit 0
+          fi
+          echo "::error title=Workflow change::This pull request changes files under .github/, which define its own checks. The owner reads them and adds the review-override label. Changed:"
+          echo "$changed"
+          exit 1

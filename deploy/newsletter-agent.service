@@ -1,0 +1,14 @@
+[Unit]
+Description=Newsletter agent: collect, score and email a digest
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+OnFailure=newsletter-agent-failure.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=@PROJECT_DIR@
+ExecStart=/usr/bin/docker compose run --rm -T --name newsletter-agent-run agent run
+ExecStopPost=-/usr/bin/docker rm -f newsletter-agent-run
+TimeoutStartSec=2h
+SuccessExitStatus=2
