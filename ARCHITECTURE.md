@@ -100,6 +100,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
 | REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 24 planted violations (section 14) |
 | REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It ran on GitHub and approved pull request #5 (section 14); it hasn't failed a pull request yet |
+| REQ-67 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" and the `diff` block. It states no merge, approval or check result, because the file can't know them. Replaces your earlier two versions | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows it |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
 
