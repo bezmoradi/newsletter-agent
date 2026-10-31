@@ -99,7 +99,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-61 | Every finding of the fourth review is fixed, on one branch from `main`, for issue #4 | Section 17 |
 | REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
 | REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 24 planted violations (section 14) |
-| REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It ran on GitHub and approved pull request #5 (section 14); it hasn't failed a pull request yet |
+| REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It approved pull request #5, and on pull request #7 it blocked two commits, on the README banner and a gap in the requirement IDs, before approving the third (section 14) |
 | REQ-67 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" and the `diff` block. It states no merge, approval or check result, because the file can't know them. Replaces your earlier two versions | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows it |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
@@ -950,6 +950,7 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
   - In an image built from the branch, against a throwaway Postgres 18 with a stand-in for Claude, the real collect step ran a three-term web search source. The deadline passing after the first term failed the source as `DeadlinePassed`, with its session counted and no success recorded; a rate limit on the third term counted all three sessions in `usage_json`; three valid terms succeeded.
   - The label logic of both workflows, taken from the YAML and run against a stand-in `gh` with recorded event and run times, behaved as intended in 17 cases. The label still counted after another label was added, and stopped counting after a new push, a force-push or its removal; another label repeated Claude's verdict on the same commit, and led to a new review when the verdict was for an older one; an API error failed the step.
   - The summary comment's script, run the same way, posted or edited one comment in 7 cases, and an API error failed the step without posting.
+  - On GitHub, on pull request #7: Claude review blocked its first commit on the README banner and its second on the requirement IDs, each with one blocking problem and one inline comment, and approved the third. It posted one summary comment and edited it after each review.
   - `scripts/check_review_workflow.py` passed on the workflow and failed on each of 24 planted violations: the 10 earlier ones, plus flow-style, repeated and earlier-job permissions, `--allowed-tools`, `--allowedTools=`, a single-quoted or a second tool list, `--dangerously-skip-permissions`, `--permission-mode`, `settings`, `plugins`, `--mcp-config`, `additional_permissions` and `write-all`.
 
 Not verified yet:
@@ -963,7 +964,7 @@ Not verified yet:
 - the systemd units running for real, including `ExecStopPost=` on a timeout; they were verified, not installed;
 - ratings against real Gmail: the IMAP sign-in with the app password, the Sent folder's attribute, how Gmail's `SEARCH SUBJECT` matches the rating subject, and whether Gmail on your phone and on the web opens the `mailto:` links with the subject filled in;
 - whether ratings help over weeks of real use, or push whole topics down after a single dislike;
-- on GitHub: the Workflow guard, including its new file list, failure on an API error and the label rule; Claude review failing on a blocking problem or a posted comment, its summary comment on the pull request, the label rule and the repeated verdict; and the weekly audit;
+- on GitHub: the Workflow guard, including its new file list, failure on an API error and the label rule; Claude review's label rule and repeated verdict; and the weekly audit;
 - `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` with the real token: only a made-up token was tried;
 - on the Pi: the install into `/opt/newsletter-agent` itself and the units running from there; the same steps ran in a throwaway folder.
 
