@@ -42,7 +42,7 @@ You are the only operator: only you configure and run it, and only you get its f
 
 ## 2. Requirements
 
-These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21, REQ-43, REQ-46 and REQ-48 were replaced by REQ-06, REQ-11, REQ-29, REQ-59, REQ-50 and REQ-49, and REQ-65 and REQ-66, two earlier versions of the README banner, by REQ-67. REQ-55 and REQ-56 asked for the repository's description and topics, which are GitHub settings rather than files; both are done.
+These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21, REQ-43, REQ-46 and REQ-48 were replaced by REQ-06, REQ-11, REQ-29, REQ-59, REQ-50 and REQ-49, and REQ-65, REQ-66 and REQ-67, three earlier versions of the README banner, by REQ-68. REQ-55 and REQ-56 asked for the repository's description and topics, which are GitHub settings rather than files; both are done.
 
 | ID | Requirement | Status (2026-10-30) |
 |---|---|---|
@@ -100,7 +100,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
 | REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 24 planted violations (section 14) |
 | REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It approved pull request #5, and on pull request #7 it blocked two commits, on the README banner and a gap in the requirement IDs, before approving the third (section 14) |
-| REQ-67 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" and the `diff` block. It states no merge, approval or check result, because the file can't know them. Replaces your earlier two versions | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows it |
+| REQ-68 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" with a "Merged" badge, the `diff` block, and the line "✅ Approved by human reviewers · All checks passed". The "Merged" badge and that line are your decision and part of the banner's design. They don't state the result of any merge, review or check. Replaces REQ-67, which left both out | `CLAUDE.md`'s rule that the README covers setup and operations only allows the banner, badge and line included. README.md doesn't have the badge and the line yet: issue #11 adds them once this rule is on `main`, because Claude review reads `CLAUDE.md` from `main` |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
 
