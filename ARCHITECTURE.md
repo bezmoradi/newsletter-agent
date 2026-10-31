@@ -987,7 +987,7 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
   - A run with a made-up Gmail account couldn't read ratings or send its digest. It ended `partial` and stored only `SMTPServerDisconnected`, and `send-pending` with the real account then sent the digest.
   - **Other commands and failures.** With a made-up Gmail account, an invalid configuration, an unreachable database, a bad port and two `DATABASE_URL`s the driver couldn't parse each exited 1, and no message showed a password. A stuck run holding the lock was reported as one, with exit 1. `backfill` queued 3 Anthropic pages, and the next run fetched one and took its title from the page. `send-pending` with nothing pending exited 0.
   - **Fetching.** All 21 transcripts were fetched. Of 28 pages, 5 answered 403: 4 on openai.com and 1 on medium.com (F-06).
-  - **The backlog.** After six runs at a cap of 12, 509 items were waiting: 333 from YouTube search and 123 from web search. The later normal runs added 31 and 41 new items.
+  - **The backlog.** After six runs at a cap of 12, 509 items were waiting: 333 from YouTube search, 123 from web search, 31 from feeds and 22 from YouTube channels. The fifth run, a normal one after the one-minute deadline, added 31 new items, and the sixth, with the made-up Gmail account, 41.
   - **Item IDs** reached 14,901 for 3,163 items, because every insert that conflicts still uses up an identity value. With `bigint` IDs that's harmless.
 
 Not verified yet:
@@ -997,7 +997,7 @@ Not verified yet:
 - injection through a real search result; only an injected search term was tried;
 - three unavailable runs in a row;
 - the systemd units running for real, including `ExecStopPost=` on a timeout; they were verified, not installed;
-- ratings from other mail apps: whether Gmail on your phone opens the `mailto:` links with the subject filled in, and Gmail on the web in Chrome, which opened a draft when the link was opened from the command line but showed you none when you clicked in Apple Mail. Apple Mail on the Mac works once it's the default email reader;
+- ratings from other mail apps: whether Gmail on your phone, and Gmail on the web in Chrome, open the `mailto:` links with the subject filled in. Apple Mail on the Mac works once it's the default email reader;
 - whether ratings help over weeks of real use, or push whole topics down after a single dislike;
 - on GitHub: the Workflow guard, including its new file list, failure on an API error and the label rule; Claude review's label rule and repeated verdict; and the weekly audit;
 - what traffic Claude Code sends with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: runs with the real token work with it set, but the traffic wasn't captured;
