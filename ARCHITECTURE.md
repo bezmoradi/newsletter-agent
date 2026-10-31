@@ -2,7 +2,7 @@
 
 **This document is the project's source of truth.** It holds what the agent must do, the decisions behind it, what research found, and how the code is built. When the code, the README or `CLAUDE.md` disagrees with it, fix whichever is wrong in the same change. Setup and day-to-day commands are in [README.md](README.md). The rules for working on the code are in [CLAUDE.md](CLAUDE.md). The diagrams are Mermaid, which GitHub renders; they weren't rendered locally.
 
-Status on 2026-10-30:
+Status on 2026-10-31:
 
 - The first draft and support for several newsletters are built.
 - Both were checked on the Mac in the real image, and the image on the Pi.
@@ -11,7 +11,8 @@ Status on 2026-10-30:
 - A third review, of the repository about to be published, found 30 issues, and every one is fixed (REQ-54, section 17).
 - A fourth review, of the published code base, by seven reviewers with an adjudicator for the serious findings, found 32 issues. You decided its open questions (REQ-57 to REQ-60 and REQ-62, with one deferred in section 16), the fixes are in, and they were checked on the Mac and the Pi (REQ-61, sections 14 and 17). The same pull request makes Claude review only review and block on every problem it finds (REQ-63, REQ-64).
 - Claude Code's ultrareview of `main` after that found five more issues, and every one is fixed and was checked on the Mac (sections 14 and 17). Claude review now posts its verdict as a comment on the pull request.
-- Learning your taste from ratings (REQ-32) is built, and was checked on the Mac against a stand-in for Gmail, not against Gmail itself (section 14).
+- Learning your taste from ratings (REQ-32) is built, and was checked on the Mac against a stand-in for Gmail, then against Gmail itself, with rating links clicked in Apple Mail on the Mac; a phone hasn't been tried (section 14).
+- The agent ran end to end in Docker on the Mac on 2026-10-31, with your Claude token, your Gmail app password and a YouTube Data API key: digests and a failure email went out through Gmail, a rating email was read back from the Sent folder, and YouTube topic search ran (section 14).
 - The project was renamed from `ai-news-agent` to `newsletter-agent` (REQ-33): the repository, the package `newsletter_agent`, the command, and every name derived from them.
 - A GitHub Actions pipeline with 17 checks (REQ-34 to REQ-45, and the Workflow guard) is written. The first 16 passed on GitHub in the private repository (section 14).
 - The repository was republished as a public repository with fresh history, without personal details, under the MIT license (REQ-50 to REQ-52). A rule on `main` requires a pull request and every check to pass (section 12).
@@ -53,13 +54,13 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-06 | Signs in with the OAuth token from `claude setup-token`. The token is valid for one year, from 2026-10-30, and is renewed yearly | Verified on the Pi; an invalid token fails the run loudly |
 | REQ-07 | No extra memory isolation; the Pi's 16 GB is enough | No boot or kernel change |
 | REQ-10 | Python with the Claude Agent SDK; nothing calls the Messages API directly | Verified |
-| REQ-11, REQ-14 | Digests are sent through Gmail's own SMTP server, from your personal Gmail. You accepted that its app password also gives full IMAP access to that mailbox and is stored on the Pi | Written; no real send yet. REQ-32 uses that IMAP access, read-only, for rating emails |
+| REQ-11, REQ-14 | Digests are sent through Gmail's own SMTP server, from your personal Gmail. You accepted that its app password also gives full IMAP access to that mailbox and is stored on the Pi | Verified on the Mac: digests and a failure email sent through Gmail (section 14). REQ-32 uses that IMAP access, read-only, for rating emails |
 | REQ-12 | The Claude model for each step (scoring, digest) is a setting | Verified |
-| REQ-13 | Besides the curated sources, YouTube topic search through a YouTube Data API key | Written; not run without a key |
-| REQ-15 | Transcripts are fetched, accepting YouTube's Terms of Service risk for personal use, and a setting turns them off | Verified; YouTube has since blocked the home network (F-16) |
+| REQ-13 | Besides the curated sources, YouTube topic search through a YouTube Data API key | Verified on the Mac with a real key (section 14) |
+| REQ-15 | Transcripts are fetched, accepting YouTube's Terms of Service risk for personal use, and a setting turns them off | Verified; YouTube blocked the home network on 2026-10-30 and served transcripts again on 2026-10-31 (F-16) |
 | REQ-16 | A newsletter with nothing new sends no email | Verified |
 | REQ-17 | Defaults, for now: a 7-day backfill, at most 100 items scored per run, at most 15 items per digest | Verified, as settings; since the third review the scoring cap is per run across all newsletters, as written, and was checked with two newsletters |
-| REQ-18 | YouTube search terms live in config, starting with "harness engineering", "software factory" and "AI skills". You change them over time | Terms load and the cap is enforced; no search has run |
+| REQ-18 | YouTube search terms live in config, starting with "harness engineering", "software factory" and "AI skills". You change them over time | Terms load, the cap is enforced, and the searches ran on the Mac (section 14) |
 | REQ-19 | A one-shot agent container in its own Compose project with `postgres:18`, started by a host systemd timer. Postgres isn't published on host ports | Written; units verified; not deployed |
 | REQ-20 | No pgvector or embeddings. Items are deduplicated by their source's ID and by canonical URL within a newsletter | Verified |
 | REQ-22 | The architecture in sections 4 to 12 | Partly verified (section 14) |
@@ -68,11 +69,11 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-25 | Several newsletters, each with its own name, recipient, sources, search terms and interest profile. Collecting is shared; scoring and the digest run per newsletter; failure emails and health information go only to you | Verified locally |
 | REQ-26 | This document is the single source of truth, and `CLAUDE.md` links to it | This version |
 | REQ-27 | Newsletters are also for your own topics, such as hardware; the cooking newsletter was one example | Supported by REQ-25 |
-| REQ-28 | Each newsletter draws on four kinds of source: a short list of YouTube channels, a short list of websites or RSS feeds, YouTube topic search, and web search. Web search is required | Channels, feeds, sitemaps and web search verified on the Mac; YouTube search written, not run without a key |
+| REQ-28 | Each newsletter draws on four kinds of source: a short list of YouTube channels, a short list of websites or RSS feeds, YouTube topic search, and web search. Web search is required | All four verified on the Mac (section 14) |
 | REQ-29 | A fixed workflow: code fetches and stores; Claude scores, summarizes and writes the digest with no tools. The one exception is web search (REQ-28), which uses Claude's own web search tool through your subscription, with no other search service or key. You accepted that search results then reach a Claude that has a tool, and that searches use your plan's limits. Replaces REQ-21 | Verified on the Mac: scoring and digest sessions offered only `StructuredOutput`, web search sessions only `StructuredOutput` and `WebSearch` |
 | REQ-30 | Logs stay on the Pi, in the journal and the `runs` table; failure emails are the only signal that leaves it. You accepted that the logs go with the Pi if it is lost or compromised (security review SEC-6) | Accepted risk |
 | REQ-31 | No paid embedding service, such as OpenAI's | Holds; there is no embedding model |
-| REQ-32 | The agent learns your taste from ratings. Each item in a digest addressed to you has "More like this" and "Less like this" links; each run reads the emails they create, read-only, from your Gmail Sent folder; scoring shows Claude your recent likes and dislikes as examples; your footer counts ratings per source. Claude stays the only model and the scorer, with no new service, dependency or secret. A monthly email suggesting profile edits isn't part of it | Built; checked on the Mac against a stand-in for Gmail (section 14) |
+| REQ-32 | The agent learns your taste from ratings. Each item in a digest addressed to you has "More like this" and "Less like this" links; each run reads the emails they create, read-only, from your Gmail Sent folder; scoring shows Claude your recent likes and dislikes as examples; your footer counts ratings per source. Claude stays the only model and the scorer, with no new service, dependency or secret. A monthly email suggesting profile edits isn't part of it | Built; checked on the Mac against a stand-in for Gmail, then against Gmail itself: a rating email sent by a script was stored and used, and ratings clicked in Apple Mail reached the Sent folder. A phone hasn't been tried (section 14) |
 | REQ-33 | The project is named `newsletter-agent`: "agent" already says AI, and a newsletter needn't be news. The repository, the package `newsletter_agent`, the command `newsletter-agent`, the Compose project, image, systemd units, container, database, secrets folder and Pi folder all follow | Done in the repository, on GitHub and on the Mac; the Pi still has the old copy (section 20) |
 | REQ-34 | A pipeline job, "PR hygiene", fails a pull request that has no linked issue | Passed on GitHub: it failed a pull request without a linked issue, then passed once one was linked |
 | REQ-35 | No code goes into `main` directly; every change arrives through a pull request | A rule in `CLAUDE.md`, enforced by the rule on `main` (REQ-50) |
@@ -953,19 +954,53 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
   - On GitHub, on pull request #7: Claude review blocked its first commit on the README banner and its second on the requirement IDs, each with one blocking problem and one inline comment, and approved the third. It posted one summary comment and edited it after each review.
   - `scripts/check_review_workflow.py` passed on the workflow and failed on each of 24 planted violations: the 10 earlier ones, plus flow-style, repeated and earlier-job permissions, `--allowed-tools`, `--allowedTools=`, a single-quoted or a second tool list, `--dangerously-skip-permissions`, `--permission-mode`, `settings`, `plugins`, `--mcp-config`, `additional_permissions` and `write-all`.
 
+- **End to end with real services, on the Mac, 2026-10-31.** The image was built from `main` at `9f1a588` and ran against a fresh Postgres made by the README's Development steps. All three models were Haiku 5.5 and `MAX_ITEMS_PER_RUN` was 12. It used your Claude token, your Gmail app password and a YouTube Data API key.
+  - `check` passed every line:
+    - the database over TLS;
+    - SMTP and IMAP sign-in, with the Sent folder found by its `\Sent` attribute;
+    - the YouTube key;
+    - Claude, offering only `StructuredOutput`;
+    - web search, offering exactly `StructuredOutput` and `WebSearch` and returning 8 links.
+
+    Claude Code reported no API key, so the calls ran on the token, with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` set.
+  - The first run took 216 seconds:
+    - it applied the 4 migrations;
+    - it collected all 25 sources: 2,608 baseline and 299 new items, 157 of them from YouTube search and 54 from web search;
+    - it fetched 12, scored 12, and sent a digest of 1 item through Gmail.
+
+    It made 9 Claude calls, which the SDK estimated at $0.27; with plan sign-in that counts against plan limits and isn't billed.
+  - A rating email for that item was sent from your address to itself, as the "More like this" link would. Gmail's `SEARCH SUBJECT` found it, the next run stored it and scored with it in the prompt, and your footer counted "web-search 1 more, 0 less".
+  - **Rating links in a mail app.** Later that day you clicked rating links in a digest in Apple Mail on the Mac. With Chrome as the Mac's default email reader, a click brought Chrome forward, but you saw no draft. With Apple Mail's "Default email reader" set to Mail, a click opened a draft to yourself with the rating subject filled in. Once sent, each was in the Sent folder, read over IMAP with `mail.read_ratings`. No run has stored a clicked rating yet.
+  - **A deleted rating email is lost.** A rating email to yourself also lands in your Inbox, and Gmail keeps it as one message. Deleting it from the Inbox moves it to Trash, and Gmail's Sent Mail folder over IMAP leaves trashed messages out, so a run that hasn't read it yet never will. Of the three rating emails found that day, two were in Trash, one of them already stored. Archiving it, which only takes it out of the Inbox, should keep it in Sent; that wasn't tried.
+  - The second run found most feeds unchanged through conditional requests. It added 160 new items, 131 of them from YouTube search, whose window had narrowed from 48 hours to 12. It scored 12 more, none of them twice, and sent a digest of 5.
+  - A run started while another held the lock did nothing and exited 0.
+  - **An invalid token:**
+    - failed the web search source with a 401 and stopped Claude;
+    - still collected the other 24 sources;
+    - ended `failed`, sent the failure email through Gmail, and exited 2.
+  - **`RUN_DEADLINE_MINUTES=1`:**
+    - failed web search with `DeadlinePassed` after 3 sessions, and their usage was counted;
+    - stopped collecting after 10 sources;
+    - ended `partial` with exit 0.
+
+    Web search's window didn't move, and the next run's search succeeded.
+  - A run with a made-up Gmail account couldn't read ratings or send its digest. It ended `partial` and stored only `SMTPServerDisconnected`, and `send-pending` with the real account then sent the digest.
+  - **Other commands and failures.** With a made-up Gmail account, an invalid configuration, an unreachable database, a bad port and two `DATABASE_URL`s the driver couldn't parse each exited 1, and no message showed a password. A stuck run holding the lock was reported as one, with exit 1. `backfill` queued 3 Anthropic pages, and the next run fetched one and took its title from the page. `send-pending` with nothing pending exited 0.
+  - **Fetching.** All 21 transcripts were fetched. Of 28 pages, 5 answered 403: 4 on openai.com and 1 on medium.com (F-06).
+  - **The backlog.** After six runs at a cap of 12, 509 items were waiting: 333 from YouTube search and 123 from web search. The later normal runs added 31 and 41 new items.
+  - **Item IDs** reached 14,901 for 3,163 items, because every insert that conflicts still uses up an identity value. With `bigint` IDs that's harmless.
+
 Not verified yet:
 
-- a real Gmail send, which needs the app password;
-- YouTube topic search, which needs the API key;
 - the batch-halving and `assess_failed` path with a real model returning invalid scores; only a stand-in for Claude was used;
 - web search with Opus 5.5, its real plan usage per run, and web search on the Pi;
 - injection through a real search result; only an injected search term was tried;
 - three unavailable runs in a row;
 - the systemd units running for real, including `ExecStopPost=` on a timeout; they were verified, not installed;
-- ratings against real Gmail: the IMAP sign-in with the app password, the Sent folder's attribute, how Gmail's `SEARCH SUBJECT` matches the rating subject, and whether Gmail on your phone and on the web opens the `mailto:` links with the subject filled in;
+- ratings from other mail apps: whether Gmail on your phone opens the `mailto:` links with the subject filled in, and Gmail on the web in Chrome, which opened a draft when the link was opened from the command line but showed you none when you clicked in Apple Mail. Apple Mail on the Mac works once it's the default email reader;
 - whether ratings help over weeks of real use, or push whole topics down after a single dislike;
 - on GitHub: the Workflow guard, including its new file list, failure on an API error and the label rule; Claude review's label rule and repeated verdict; and the weekly audit;
-- `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` with the real token: only a made-up token was tried;
+- what traffic Claude Code sends with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`: runs with the real token work with it set, but the traffic wasn't captured;
 - on the Pi: the install into `/opt/newsletter-agent` itself and the units running from there; the same steps ran in a throwaway folder.
 
 Before any `claude-agent-sdk` upgrade, repeat the Pi checks: `check` with the real token, then with an invalid one.
@@ -978,8 +1013,8 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 |---|---|---|
 | F-04 | `CLAUDE_CODE_OAUTH_TOKEN` works only through Claude Code. Bare mode doesn't read it, and the [headless docs](https://code.claude.com/docs/en/headless) say bare mode "will become the default for `-p` in a future release". That's why the SDK is pinned and re-checked before upgrades | Documented; the effect on the SDK is unresolved |
 | F-05 | anthropic.com has no RSS feed; its sitemap lists news, research and engineering pages, but `lastmod` dates were bulk-refreshed. `claude.com/blog` redirects (308) to `/resources/articles`. The claude.com sitemap holds 4,144 URLs, mostly marketplace and translated pages | Observed |
-| F-06 | OpenAI's feed is `https://openai.com/news/rss.xml`. YouTube channel feeds are `https://www.youtube.com/feeds/videos.xml?channel_id=<id>`, with no API key. OpenAI article pages answer 403 to the agent, so they are scored on the feed summary | Observed |
-| F-07, F-16 | Transcripts worked from the home network at first: 3 of 3 (E2). After about two dozen test requests on 2026-10-30, YouTube answered `IpBlocked`. The Pi is likely blocked too if it shares the connection; that wasn't checked, and the block's duration is unknown | Observed; the Pi Inferred |
+| F-06 | OpenAI's feed is `https://openai.com/news/rss.xml`. YouTube channel feeds are `https://www.youtube.com/feeds/videos.xml?channel_id=<id>`, with no API key. OpenAI article pages answer 403 to the agent, so they are scored on the feed summary. Medium-hosted posts, such as `steve-yegge.medium.com`, answered 403 too on 2026-10-31 | Observed |
+| F-07, F-16 | Transcripts worked from the home network at first: 3 of 3 (E2). After about two dozen test requests on 2026-10-30, YouTube answered `IpBlocked`. The Pi is likely blocked too if it shares the connection; that wasn't checked. On 2026-10-31, from the same network, 21 of 21 transcripts came back in Docker on the Mac, so the block had lifted within a day | Observed; the Pi Inferred |
 | F-08 | A Claude call with Claude Code's default tools carries about 12,000 tokens of tool definitions; with `tools=[]` it was 1,050 (E3). Plan usage at real volume isn't measured yet | Observed |
 | F-10 | `postgres:18` has an arm64 image; 18.6 was the latest release, end of life 2030-11-14 | Observed |
 | F-14 | Gmail app passwords need 2-Step Verification, and Google revokes them "when you change your Google Account password" ([Google Account Help](https://support.google.com/accounts/answer/185833)) | Documented |
@@ -1184,10 +1219,10 @@ The design-pattern review found no new pattern needed. One light one stays: a di
 ## 20. Next steps
 
 1. Prune the seed sources, search terms and interest profile in `config/newsletters/ai/`.
-2. Turn on 2-Step Verification on the Gmail account and create an app password. Create a YouTube Data API key restricted to that API.
+2. Done on 2026-10-31: the Gmail app password and a YouTube Data API key exist, and both worked on the Mac (section 14). They go into `agent.env` on the Pi when you deploy.
 3. Deploy on the Pi, following the README. That needs your go-ahead, because it enables the timer and sends real email. The Pi still holds a copy from before the rename (REQ-33), in `~/Projects/ai-news-agent`, and its image `ai-news-agent:local`. No containers, volumes, units or secrets were created for it. Deploy through the staging folder `~/Projects/newsletter-agent` to `/opt/newsletter-agent`, then remove the old folder and image.
 4. Over the first week, measure plan usage per run, including web search, and transcript success. Then tune the models, `SEARCH_MODEL` included, the threshold, the sources and the search terms.
-5. With the first real digest, tap one rating link on your phone and send the email, then confirm the next run's `check` or footer counts it. That's the first test of ratings against real Gmail.
+5. With the first real digest, tap one rating link on your phone and send the email, then confirm the next run's `check` or footer counts it. Clicking a rating link in Apple Mail on the Mac worked; a phone hasn't been tried (section 14).
 6. After a week of real runs, compare the waiting count with what each run fetches, and decide whether old items should age out (section 9).
 7. Turn on GitHub's "Keep my email addresses private" before the next merge in the browser, and decide the two GitHub settings in section 16.
 8. Add more newsletters, such as hardware, as folders under `config/newsletters/`.
