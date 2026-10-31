@@ -42,7 +42,7 @@ You are the only operator: only you configure and run it, and only you get its f
 
 ## 2. Requirements
 
-These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21, REQ-43 and REQ-46 were replaced by REQ-06, REQ-11, REQ-29, REQ-59 and REQ-50.
+These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, REQ-21, REQ-43, REQ-46 and REQ-48 were replaced by REQ-06, REQ-11, REQ-29, REQ-59, REQ-50 and REQ-49, and REQ-65 and REQ-66, two earlier versions of the README banner, by REQ-67. REQ-55 and REQ-56 asked for the repository's description and topics, which are GitHub settings rather than files; both are done.
 
 | ID | Requirement | Status (2026-10-30) |
 |---|---|---|
