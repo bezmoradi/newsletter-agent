@@ -125,5 +125,5 @@ The rest of the package:
 ## Docs
 
 - ARCHITECTURE.md is the single source of truth. New requirements, decisions, findings and risks go there, not into new documents. There is no PRD; it was folded into ARCHITECTURE.md.
-- README.md covers setup and operations only, apart from the owner's banner at its top (REQ-67), and must agree with ARCHITECTURE.md. The banner states no merge, approval or check result, because the file can't know them.
+- README.md covers setup and operations only, apart from the owner's banner at its top (REQ-68), and must agree with ARCHITECTURE.md. The banner shows a "Merged" badge and the line "✅ Approved by human reviewers · All checks passed". Both are the owner's decision and part of the banner's design. They don't state the result of any merge, review or check.
 - Keep both in step with the code.
