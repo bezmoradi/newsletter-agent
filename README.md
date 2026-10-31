@@ -1,3 +1,18 @@
+<h1 align="center">⚙️ Engineered, Not Vibe Coded</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Engineered-not%20vibe%20coded-blue?style=for-the-badge" alt="Engineered, not vibe coded">
+</p>
+
+## #1 Stop vibe coding <img src="https://img.shields.io/badge/Merged-8957e5?style=flat-square&logo=git&logoColor=white" alt="Merged">
+
+```diff
+- vibe coded: shipped because it compiled
++ engineered: designed, reviewed, documented
+```
+
+<sub>✅ Approved by human reviewers · All checks passed</sub>
+
 # Newsletter agent
 
 A personal agent that runs once a day on a Raspberry Pi. It runs one or more **newsletters**. The first is AI news: blogs, the Anthropic and OpenAI sites, YouTube channels, a YouTube topic search, and a web search that Claude runs with its own search tool. Each newsletter has its own sources, interest profile and recipient. The agent stores everything in Postgres and has Claude score each item against its newsletter's profile. When something scores high enough, it emails that newsletter's recipient a short digest from your Gmail account.
@@ -248,7 +263,7 @@ uv run pre-commit run --all-files --hook-stage pre-push
 2. Work on a branch, and push it.
 3. Open a pull request with `Closes #<issue number>` in its description, or link the issue under Development in the pull request's sidebar, then re-run the PR hygiene job.
 
-GitHub Actions then runs 17 checks, from PR hygiene to the secret scan. ARCHITECTURE.md section 12 says what each one checks. One of them, Claude review, has Claude review the pull request. Every problem it finds blocks the merge, however minor: anything wrong, unclear, inconsistent or out of date. It posts an inline comment for each, and the check fails. It only reviews: it can read the pull request and comment on it, but never change a file, commit or push, and `scripts/check_review_workflow.py` checks the settings that keep it so. Fix the findings and push, which runs it again. If Claude is wrong, add the `review-override` label after your latest push. Adding it runs Claude review and the Workflow guard again, and both pass for that commit only: the next push needs Claude's review again, or the label removed and added again. The Workflow guard fails a pull request that changes `.github/`, `scripts/` or a check's settings file until you add the label. To ask it something on a pull request or an issue, write a comment that mentions `@claude`, such as `@claude check this against CLAUDE.md`. Both use your Claude plan, and only answer you. A rule on `main` blocks direct pushes and any merge while a check is red, Claude review included.
+GitHub Actions then runs 17 checks, from PR hygiene to the secret scan. ARCHITECTURE.md section 12 says what each one checks. One of them, Claude review, has Claude review the pull request. Every problem it finds blocks the merge, however minor: anything wrong, unclear, inconsistent or out of date. It posts an inline comment for each, and the check fails. Its verdict on your latest commit and a summary of what it checked go in one comment on the pull request, which it edits on each later review. It only reviews: it can read the pull request and comment on it, but never change a file, commit or push, and `scripts/check_review_workflow.py` checks the settings that keep it so. Fix the findings and push, which runs it again. If Claude is wrong, add the `review-override` label after your latest push. Adding it runs Claude review and the Workflow guard again, and both pass for that commit only, even if you add other labels later: the next push needs Claude's review again, or the label removed and added again. The Workflow guard fails a pull request that changes `.github/`, `scripts/` or a check's settings file until you add the label. To ask it something on a pull request or an issue, write a comment that mentions `@claude`, such as `@claude check this against CLAUDE.md`. Both use your Claude plan, and only answer you. A rule on `main` blocks direct pushes and any merge while a check is red, Claude review included.
 
 **This repository is public.** Keep personal details, your machines' network and access details, and secrets out of every commit, issue and comment. Git ignores any file with `.local` in its name, so private notes can live in one, such as `CLAUDE.local.md`, which Claude Code also loads beside `CLAUDE.md`.
 

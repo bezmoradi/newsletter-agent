@@ -39,7 +39,13 @@ STARTUP_TIMEOUT = "Control request timeout"
 
 
 class ClaudeError(Exception):
-    pass
+    """A Claude session failed. spent holds the usage of the sessions that ran before the failure,
+    so a caller can still count them.
+    """
+
+    def __init__(self, message: str, spent: tuple[Structured, ...] = ()) -> None:
+        super().__init__(message)
+        self.spent = spent
 
 
 class ClaudeAuthError(ClaudeError):
@@ -57,13 +63,9 @@ class ClaudeUnavailable(ClaudeError):
 
 
 class ClaudeOutputError(ClaudeError):
-    """Claude answered, but without valid structured output. spent holds the usage of the
-    sessions that produced nothing valid, so a caller can still count them.
-    """
+    """Claude answered, but without valid structured output."""
 
-    def __init__(self, message: str, spent: tuple[Structured, ...] = ()) -> None:
-        super().__init__(message)
-        self.spent = spent
+    pass
 
 
 @dataclass(frozen=True)
@@ -176,15 +178,17 @@ def _on_system(message: SystemMessage, signals: _Signals) -> None:
 
 
 def _on_result(message: ResultMessage, model: str, signals: _Signals) -> Structured:
-    if signals.tools is None:
-        raise ClaudeAuthError("Claude Code sent no init message, so its tools couldn't be checked")
     spent = Structured(
         output=None,
         model=model,
-        tools=tuple(signals.tools),
+        tools=tuple(signals.tools or ()),
         usage=dict(message.usage or {}),
         cost_usd=message.total_cost_usd,
     )
+    if signals.tools is None:
+        raise ClaudeAuthError(
+            "Claude Code sent no init message, so its tools couldn't be checked", (spent,)
+        )
     if message.is_error:
         signals.status = message.api_error_status or signals.status
         if message.subtype.startswith("error_max") or message.terminal_reason == "max_turns":
@@ -196,17 +200,18 @@ def _on_result(message: ResultMessage, model: str, signals: _Signals) -> Structu
             signals,
             f"Claude Code result {message.subtype}, status {message.api_error_status}, "
             f"reason {message.terminal_reason}: {(message.result or '')[:300]}",
+            (spent,),
         )
     if message.structured_output is None:
         raise ClaudeOutputError(f"no structured output: {(message.result or '')[:300]}", (spent,))
     return replace(spent, output=storable_json(message.structured_output))
 
 
-def _classify(signals: _Signals, detail: str) -> ClaudeError:
+def _classify(signals: _Signals, detail: str, spent: tuple[Structured, ...] = ()) -> ClaudeError:
     status = signals.status
     errors = {signals.assistant_error, signals.retry_error}
     if status in (401, 403) or errors & AUTH_ERRORS:
-        return ClaudeAuthError(detail)
+        return ClaudeAuthError(detail, spent)
     if status == 429 or (status is not None and status >= 500) or errors & TRANSIENT_ERRORS:
-        return ClaudeUnavailable(detail)
-    return ClaudeAuthError(f"unclassified: {detail}")
+        return ClaudeUnavailable(detail, spent)
+    return ClaudeAuthError(f"unclassified: {detail}", spent)
