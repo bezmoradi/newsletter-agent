@@ -5,6 +5,7 @@ on:
     types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions:
+  actions: read
   pull-requests: read
 
 concurrency:
@@ -21,8 +22,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
-          ACTION: ${{ github.event.action }}
-          LABEL: ${{ github.event.label.name }}
+          SHA: ${{ github.event.pull_request.head.sha }}
           GUARDED: '^(\.github/|scripts/|\.gitleaks\.toml$|\.squawk\.toml$|\.pre-commit-config\.yaml$)'
         run: |
           set -euo pipefail
@@ -39,8 +39,17 @@ jobs:
             echo "This pull request changes none of the files that define the checks."
             exit 0
           fi
-          if [ "$ACTION" = labeled ] && [ "$LABEL" = review-override ]; then
-            echo "The owner added the review-override label to this commit, so these changes are allowed:"
+          labeled=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/labels" --jq 'any(.[]; .name == "review-override")')
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/events" > "$RUNNER_TEMP/events.json"
+          added=$(jq -rs '[add | .[] | select(.event == "labeled" and .label.name == "review-override") | .created_at] | max // empty' "$RUNNER_TEMP/events.json")
+          forced=$(jq -rs '[add | .[] | select(.event == "head_ref_force_pushed") | .created_at] | max // empty' "$RUNNER_TEMP/events.json")
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA" > "$RUNNER_TEMP/runs.json"
+          pushed=$(jq -rs '[.[].workflow_runs[].created_at] | min // empty' "$RUNNER_TEMP/runs.json")
+          if [[ "$forced" > "$pushed" ]]; then
+            pushed=$forced
+          fi
+          if [ "$labeled" = true ] && [ -n "$pushed" ] && [[ "$added" > "$pushed" ]]; then
+            echo "The owner added the review-override label after this commit was pushed, so these changes are allowed:"
             echo "$changed"
             exit 0
           fi

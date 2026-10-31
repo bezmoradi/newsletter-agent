@@ -16,6 +16,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
+      actions: read
       contents: read
       pull-requests: write
 
@@ -27,13 +28,45 @@ jobs:
       - name: Check for the owner's override
         id: override
         env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
           ACTION: ${{ github.event.action }}
-          LABEL: ${{ github.event.label.name }}
         run: |
-          if [ "$ACTION" = labeled ] && [ "$LABEL" = review-override ]; then
-            echo "The owner added the review-override label to this commit, so Claude's approval isn't required."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          labeled=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/labels" --jq 'any(.[]; .name == "review-override")')
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/events" > "$RUNNER_TEMP/events.json"
+          added=$(jq -rs '[add | .[] | select(.event == "labeled" and .label.name == "review-override") | .created_at] | max // empty' "$RUNNER_TEMP/events.json")
+          forced=$(jq -rs '[add | .[] | select(.event == "head_ref_force_pushed") | .created_at] | max // empty' "$RUNNER_TEMP/events.json")
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$SHA" > "$RUNNER_TEMP/runs.json"
+          pushed=$(jq -rs '[.[].workflow_runs[].created_at] | min // empty' "$RUNNER_TEMP/runs.json")
+          if [[ "$forced" > "$pushed" ]]; then
+            pushed=$forced
           fi
+          if [ "$labeled" = true ] && [ -n "$pushed" ] && [[ "$added" > "$pushed" ]]; then
+            echo "The owner added the review-override label after this commit was pushed, so Claude's approval isn't required."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$ACTION" != labeled ]; then
+            exit 0
+          fi
+          marker='<!-- claude-review -->'
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | tail -n 1)
+          verdict=""
+          if [ -n "$id" ]; then
+            verdict=$(gh api "repos/$GITHUB_REPOSITORY/issues/comments/$id" --jq '.body' | sed -n 2p)
+          fi
+          case "$verdict" in
+            "**Claude approves** $SHA:"*)
+              echo "Claude already approved this commit, and a label doesn't change that."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              ;;
+            "**Claude requests changes** to $SHA:"*)
+              echo "::error title=Changes requested::Claude's review of this commit requested changes; see its comment on the pull request. A label other than review-override doesn't change that."
+              exit 1
+              ;;
+          esac
 
       - name: Checkout repository
         if: steps.override.outputs.skip != 'true'
@@ -74,26 +107,47 @@ jobs:
             --json-schema '{"type":"object","properties":{"blocking":{"type":"array","items":{"type":"string"}},"summary":{"type":"string"}},"required":["blocking","summary"],"additionalProperties":false}'
 
       - name: Require Claude's approval
-        if: steps.override.outputs.skip != 'true'
+        if: ${{ !cancelled() && steps.override.outcome == 'success' && steps.override.outputs.skip != 'true' }}
         env:
           RESULT: ${{ steps.claude-review.outputs.structured_output }}
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           STARTED: ${{ steps.start.outputs.at }}
         run: |
           set -o pipefail
+          marker='<!-- claude-review -->'
+          body="$RUNNER_TEMP/claude-review.md"
           blocking=$(printf '%s' "$RESULT" | jq -r 'if (.blocking | type) == "array" and (.summary | type) == "string" then .blocking | length else empty end' 2>/dev/null || true)
+          posted=0
+          if [ -z "$blocking" ]; then
+            printf '%s\nClaude did not finish reviewing %s. [See the run](%s).\n' "$marker" "$SHA" "$RUN_URL" > "$body"
+          else
+            posted=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/comments" --jq ".[] | select(.user.type == \"Bot\" and .created_at >= \"$STARTED\") | .id" | wc -l | tr -d ' ')
+            {
+              echo "$marker"
+              if [ "$blocking" = "0" ] && [ "$posted" = "0" ]; then
+                printf '**Claude approves** %s: nothing blocks.\n\n' "$SHA"
+              else
+                printf '**Claude requests changes** to %s: %s blocking problem(s), and %s inline comment(s) posted during the review.\n\n' "$SHA" "$blocking" "$posted"
+                printf '%s' "$RESULT" | jq -r '.blocking[] | "- " + .'
+                echo
+              fi
+              printf '%s' "$RESULT" | jq -r '.summary'
+            } > "$body"
+          fi
+          cat "$body" >> "$GITHUB_STEP_SUMMARY"
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$marker\"))) | .id" | tail -n 1)
+          if [ -n "$id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F "body=@$body" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F "body=@$body" > /dev/null
+          fi
           if [ -z "$blocking" ]; then
             echo "::error title=No review::Claude returned no review. Re-run this job; if it keeps failing, read the review step's log."
             exit 1
           fi
-          {
-            echo "## Claude review"
-            printf '%s' "$RESULT" | jq -r '.blocking[] | "- " + .'
-            echo
-            printf '%s' "$RESULT" | jq -r '.summary'
-          } >> "$GITHUB_STEP_SUMMARY"
-          posted=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/comments" --jq ".[] | select(.user.type == \"Bot\" and .created_at >= \"$STARTED\") | .id" | wc -l | tr -d ' ')
           if [ "$blocking" != "0" ] || [ "$posted" != "0" ]; then
             echo "::error title=Changes requested::Claude listed $blocking blocking problem(s), and $posted inline comment(s) were posted during this review. Every problem blocks. Fix them and push, or, if Claude is wrong, add the review-override label after your latest push."
             exit 1

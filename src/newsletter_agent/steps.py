@@ -13,7 +13,7 @@ from newsletter_agent import enrich as enrich_mod
 from newsletter_agent import llm, mail, prompts, store
 from newsletter_agent.settings import NewsletterConfig, Settings, SourceConfig
 from newsletter_agent.sources import COLLECTORS
-from newsletter_agent.sources.base import Collected, SourceState
+from newsletter_agent.sources.base import Collected, DeadlinePassed, SourceState
 from newsletter_agent.text import fence
 from newsletter_agent.urls import MAX_URL_LENGTH, canonical_url, is_web_url, youtube_video_id
 
@@ -100,16 +100,21 @@ class Run:
         tried = self.counts["sources_tried"]
         return tried > 0 and self.counts["source_failures"] >= tried
 
-    def record_usage(self, result: llm.Structured) -> None:
-        self.counts["claude_calls"] += 1
-        totals = self.usage.setdefault(result.model, {})
-        for key, value in result.usage.items():
-            if isinstance(value, int | float):
-                totals[key] = totals.get(key, 0) + value
-        if result.cost_usd is not None:
-            totals["cost_usd"] = round(totals.get("cost_usd", 0.0) + result.cost_usd, 6)
+    def record_usage(self, *results: llm.Structured) -> None:
+        """Count each Claude session and add its usage to the run's totals, whether or not its
+        output was valid.
+        """
+        for result in results:
+            self.counts["claude_calls"] += 1
+            totals = self.usage.setdefault(result.model, {})
+            for key, value in result.usage.items():
+                if isinstance(value, int | float):
+                    totals[key] = totals.get(key, 0) + value
+            if result.cost_usd is not None:
+                totals["cost_usd"] = round(totals.get("cost_usd", 0.0) + result.cost_usd, 6)
 
     def claude_failed(self, error: llm.ClaudeError) -> None:
+        self.record_usage(*error.spent)
         self.claude_stopped = True
         self.degraded = True
         if isinstance(error, llm.ClaudeUnavailable):
@@ -180,13 +185,11 @@ def _collect_source(
     except Exception as e:
         if isinstance(e, llm.ClaudeAuthError | llm.ClaudeUnavailable):
             run.claude_failed(e)
-        if isinstance(e, llm.ClaudeOutputError):
-            for spent in e.spent:
-                run.record_usage(spent)
+        elif isinstance(e, llm.ClaudeOutputError | DeadlinePassed):
+            run.record_usage(*e.spent)
         _source_failed(conn, run, row["id"], now, e, where)
         return
-    for result in collected.claude:
-        run.record_usage(result)
+    run.record_usage(*collected.claude)
     try:
         added, skipped = _store_candidates(
             conn, settings, newsletter.key, row["id"], collected, first_sight=first_sight, now=now
@@ -411,8 +414,7 @@ def _score_group(
         scored = _valid_scores(result.output, len(rows))
         run.output_errors = 0
     except llm.ClaudeOutputError as e:
-        for spent in e.spent:
-            run.record_usage(spent)
+        run.record_usage(*e.spent)
         run.output_errors += 1
         log.warning(
             "invalid scoring output",
@@ -545,8 +547,7 @@ def _write_digest(
     try:
         result = llm.structured(prompt, DIGEST_SCHEMA, settings.digest_model)
     except llm.ClaudeOutputError as e:
-        for spent in e.spent:
-            run.record_usage(spent)
+        run.record_usage(*e.spent)
         log.warning(
             "invalid digest output",
             extra={"fields": {"newsletter": newsletter.key, "error": str(e)}},

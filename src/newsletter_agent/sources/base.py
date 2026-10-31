@@ -50,8 +50,13 @@ type Collector = Callable[[SourceConfig, SourceState, Settings, float], Collecte
 
 class DeadlinePassed(Exception):
     """The run's deadline passed before a source finished, so the source fails rather than
-    record a success for work it skipped.
+    record a success for work it skipped. spent holds the usage of the Claude sessions the source
+    ran before the deadline, so the run can still count them.
     """
+
+    def __init__(self, message: str, spent: tuple[Structured, ...] = ()) -> None:
+        super().__init__(message)
+        self.spent = spent
 
 
 def past(deadline: float) -> bool:
