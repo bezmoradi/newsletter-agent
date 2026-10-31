@@ -38,8 +38,32 @@ A personal agent that runs once a day on a Raspberry Pi. It runs one or more **n
 
 - A Raspberry Pi with Docker and Docker Compose. This setup was checked on a Pi 5 with Docker 29 and Compose 5.4.
 - A Claude subscription token from `claude setup-token`. It is valid for one year.
-- A Gmail account with 2-Step Verification on and an [app password](https://support.google.com/accounts/answer/185833).
-- A YouTube Data API v3 key from a Google Cloud project, for topic search. Restrict the key to that API.
+- A Gmail app password, made as below. A free Gmail account works.
+- A YouTube Data API key, made as below, if a newsletter has a `youtube_search` source.
+
+### Gmail app password
+
+The agent signs in to Gmail with an app password. It sends every email through `smtp.gmail.com`, and reads your rating emails from the Sent folder over IMAP.
+
+1. Turn on 2-Step Verification for the account, under **Security** at https://myaccount.google.com/security. Google offers app passwords only once it's on.
+2. Open https://myaccount.google.com/apppasswords, signed in as that account. Name the password, such as `newsletter-agent`, and click **Create**.
+3. Copy the 16-letter password Google shows; it isn't shown again. In `agent.env`, set `SMTP_APP_PASSWORD` to it without the spaces, and `SMTP_USERNAME` to the account's address.
+
+`check` then reports `ok smtp` and `ok imap`.
+
+If the page offers no app password, Google gives these reasons: 2-Step Verification is off or uses only security keys, the account belongs to a work, school or other organization, or it has Advanced Protection. Google's help: [Sign in with app passwords](https://support.google.com/accounts/answer/185833).
+
+### YouTube Data API key
+
+YouTube topic search needs a key for the YouTube Data API v3. Google's daily quota is 10,000 units, and each search term costs 100 units a run.
+
+1. Create a Google Cloud project at https://console.cloud.google.com/projectcreate, such as `newsletter-agent`, and select it.
+2. Enable the API at https://console.cloud.google.com/apis/library/youtube.googleapis.com.
+3. At https://console.cloud.google.com/apis/credentials, click **Create credentials**, then **API key**. If Google asks what data you'll access, choose **Public data**.
+4. Open the key, set **API restrictions** to **Restrict key** with only **YouTube Data API v3** ticked, and click **Save**. Leave **Application restrictions** at **None**, because your home IP address can change.
+5. In `agent.env`, set `YOUTUBE_API_KEY` to the key.
+
+`check` then reports `ok youtube: the API key works`.
 
 ## Configuration
 
@@ -85,9 +109,9 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `CLAUDE_CODE_OAUTH_TOKEN` | required | The token from `claude setup-token` |
 | `DATABASE_URL` | required | `postgresql://newsletter_agent:<AGENT_DB_PASSWORD>@db:5432/newsletter_agent?sslmode=verify-full&sslrootcert=/run/db-tls/server.crt` |
 | `SMTP_USERNAME` | required | Your Gmail address. Every email is sent from it, and failure emails go to it |
-| `SMTP_APP_PASSWORD` | required | The Gmail app password |
+| `SMTP_APP_PASSWORD` | required | The Gmail app password, without the spaces; see [Gmail app password](#gmail-app-password) |
 | `DIGEST_TO_<KEY>` | `SMTP_USERNAME` | Where newsletter `<key>`'s digest goes |
-| `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key |
+| `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key; see [YouTube Data API key](#youtube-data-api-key) |
 | `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search |
 | `SCORE_THRESHOLD` | `6` | The lowest score, out of 10, that goes in a digest, unless a newsletter sets its own |
 | `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting |
@@ -213,6 +237,8 @@ Run these on the Pi from `/opt/newsletter-agent`.
 - Rating an item again replaces the earlier rating. Deleting the email after the run doesn't undo a rating.
 - A digest for anyone else has no links.
 
+**On a Mac,** if clicking a rating link in Apple Mail does nothing, open Mail → Settings → General and set "Default email reader" to Mail. A click then opens a new message in Apple Mail; send it from the Gmail account in `SMTP_USERNAME`, so it lands in the Sent folder the agent reads.
+
 See the stored ratings with:
 
 ```bash
@@ -232,7 +258,7 @@ sudo docker compose exec db psql -U newsletter_agent -c "select f.sent_at, f.lik
   Each digest shows the days left, and moves a warning to the top in the last 30 days. An expired token makes the run fail and send a failure email.
 
   GitHub has its own copy, the repository secret `CLAUDE_CODE_OAUTH_TOKEN`, which Claude review and `@claude` use. When Claude review starts failing with a sign-in error, run `/install-github-app` in Claude Code again, or `gh secret set CLAUDE_CODE_OAUTH_TOKEN` with a new token.
-- **After changing your Google password,** create a new app password and replace `SMTP_APP_PASSWORD`. Google revokes app passwords when the password changes.
+- **After changing your Google password,** create a new app password at https://myaccount.google.com/apppasswords and replace `SMTP_APP_PASSWORD`. Google revokes app passwords when the password changes.
 - **Edit sources, search terms or interests** in `config/newsletters/` in the repository, then copy the code to the Pi again (step 1). Don't edit them on the Pi: the next deploy would overwrite the change. The folder is mounted into the container, so the next run uses it without a rebuild. Changing a source's type, URL, channel or include rules makes its next collection start again from a baseline, so old entries aren't scored as new.
 - **Turn transcripts off** with `TRANSCRIPTS_ENABLED=false` if YouTube blocks the Pi. Each blocked video shows `IpBlocked` in `item_content.error`, and videos are scored on their title and description either way. YouTube blocked transcript requests from the home network on 2026-10-30, after about two dozen test requests that day.
 - **Never edit a migration file that a database has already applied.** Add a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there, such as `<next number>_add_column.sql`; the next run applies it.
