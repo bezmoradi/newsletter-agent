@@ -1,5 +1,7 @@
 I build software with AI coding agents and want to learn how people actually build, operate and improve agentic software-development systems: coding agents, their harnesses, software factories and dark factories, and the tooling and practices that connect them. I read every item with one question: what can I learn from this that would help me build or use a more capable, reliable and autonomous software-development system?
 
+I read English only. An article or video mainly in another language, such as Japanese, Chinese, Korean, Portuguese, Spanish or Hindi, is out of scope whatever its topic and however well it matches a rated item: score it 0. A title that mixes English technical terms with another language, such as "Agent Skills は Codex でも効く？", counts as that other language.
+
 An item is worth my time when it offers:
 
 - working implementations, repositories, technical walkthroughs or reproducible examples;

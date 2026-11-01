@@ -445,11 +445,12 @@ def below_threshold(
     conn: Connection, newsletter: str, source_keys: list[str], threshold: int, days: int
 ) -> list[Row]:
     """A newsletter's assessed items of the sources in source_keys whose latest score, given in
-    the last days days, is below threshold, never offered to a digest or listed in one, best
-    first.
+    the last days days, is from 1 to below threshold, never offered to a digest or listed in one,
+    best first. A 0 means the item is unrelated or out of scope, such as one in a language the
+    profile excludes, so it isn't listed.
     """
     since = datetime.now(UTC) - timedelta(days=days)
-    rows = _scored(conn, newsletter, source_keys, 0, threshold)
+    rows = _scored(conn, newsletter, source_keys, 1, threshold)
     return [row for row in rows if row["scored_at"] >= since]
 
 
