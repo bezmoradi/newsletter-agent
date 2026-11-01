@@ -672,7 +672,8 @@ def _rescore_without_ratings(
         log.warning("invalid rescoring output", extra={"fields": {"error": str(e)}})
         return
     run.record_usage(result)
-    for n, (score, _reason) in _valid_scores(result.output, len(rows)).items():
+    scores = _valid_scores(result.output, len(rows))
+    for n, (score, _reason) in scores.items():
         store.save_score_without_ratings(
             conn,
             rows[n - 1]["id"],
@@ -681,7 +682,7 @@ def _rescore_without_ratings(
             score=score,
         )
     conn.commit()
-    run.counts["rescored_without_ratings"] += len(rows)
+    run.counts["rescored_without_ratings"] += len(scores)
 
 
 def _valid_scores(output: Any, size: int) -> dict[int, tuple[int, str]]:

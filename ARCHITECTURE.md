@@ -59,7 +59,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-13 | Besides the curated sources, YouTube topic search through a YouTube Data API key | Verified on the Mac with a real key (section 14) |
 | REQ-15 | Transcripts are fetched, accepting YouTube's Terms of Service risk for personal use, and a setting turns them off | Verified; YouTube blocked the home network on 2026-10-30 and served transcripts again on 2026-10-31 (F-16) |
 | REQ-16 | A newsletter with nothing new sends no email | Verified |
-| REQ-17 | Defaults, for now: a 7-day backfill, at most 100 items scored per run, at most 15 items per digest | Verified, as settings; since the third review the scoring cap is per run across all newsletters, as written, and was checked with two newsletters |
+| REQ-17 | Defaults, for now: a 7-day backfill, at most 100 items scored per run, at most 8 items per digest (REQ-88) | Verified, as settings; since the third review the scoring cap is per run across all newsletters, as written, and was checked with two newsletters |
 | REQ-18 | YouTube search terms live in config, starting with "harness engineering", "software factory" and "AI skills". You change them over time | Terms load, the cap is enforced, and the searches ran on the Mac (section 14) |
 | REQ-19 | A one-shot agent container in its own Compose project with `postgres:18`, started by a host systemd timer. Postgres isn't published on host ports | Written; units verified; not deployed |
 | REQ-20 | No pgvector or embeddings. Items are deduplicated by their source's ID and by canonical URL within a newsletter | Verified |
@@ -109,7 +109,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-73 | No source fills more than 3 places in one digest; the candidates it holds back are recorded as left out, so they don't return every day | Built (section 9) |
 | REQ-74 | Items waiting to be fetched or scored for more than 7 days go back to `baseline` | Built (section 9) |
 | REQ-75 | Web search results dated more than 3 days before the search window are dropped | Built (section 7) |
-| REQ-76 | The digest has no intro paragraph; it goes from its heading straight to the first item | Built: `digest_v2`, kept in `digest_v3` (section 7) |
+| REQ-76 | The digest has no intro paragraph; it goes from its heading straight to the first item | Built: the digest prompt, `digest_v3`, and its schema have no intro (section 7) |
 | REQ-77 | The digest's text is about 1.75 times its earlier size: 1.5 times from your sample of 2026-10-31, then a little bigger at your request the same day; the score stands out in color | Built in `mail._html` (section 7) |
 | REQ-78 | Scoring sees a balanced sample of your ratings, at most 5 likes and 5 dislikes from 180 days and at most 2 of each per source, each with its source; the prompt reads a dislike as being about that item; a random tenth of batches is scored again without the ratings, and both scores are kept | Built (section 7, "Learning your taste") |
 | REQ-79 | Dropped on 2026-10-31, before release: a "Was this email worth your time?" Yes and No under each digest. You decided you don't need it, so nothing of it was kept | Dropped |
@@ -564,7 +564,7 @@ The first review found that the seed sitemaps hold 4,732 URLs, which would mean 
   - An item with no publication date, as most web search results are, counts from when it was first stored.
   - The rest wait for the next run, and your footer shows how many items are waiting.
   - **Items age out (REQ-74).** Right after collection, `steps.expire` moves items still waiting to be fetched or scored back to `baseline` once they are more than 7 days old, counted from their date, or from first sight when they have none, or from the `backfill` that queued them. YouTube search can find more videos in one run than the run may score, so without this the queue only grew: 557 items were waiting after the seven test runs of 2026-10-31.
-- **Lowering a score threshold** releases a backlog once: every earlier item at the new level becomes a candidate, the next digest offers the best `DIGEST_MAX_ITEMS` of them, and the rest are recorded as not included.
+- **Lowering a score threshold** releases a backlog once: every earlier item at the new level becomes a candidate. The next digest offers the best 30 of them to the digest call, at most 3 from one source, and Claude chooses up to `DIGEST_MAX_ITEMS` (REQ-80). The rest are recorded as not included, with the reason `cap`, `source_cap`, `not_chosen` or `repeat`, so they don't come back.
 - **`DIGEST_MAX_ITEMS`** caps each digest, and no source may fill more than 3 of its places (REQ-73), so neither search source can fill an email. Candidates left out are recorded as not included, with the reason, so they don't come back the next day.
 - **`newsletter-agent backfill --newsletter <key> --source <key> --since <date>`** moves selected `baseline` items to `new`, at most `MAX_ITEMS_PER_RUN` unless `--limit` says otherwise. Sitemap entries have no publication date, so for a sitemap source `--since` compares against when the item was first stored, and the items are picked in reverse sitemap order.
 
