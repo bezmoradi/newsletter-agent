@@ -15,19 +15,20 @@
 
 # Newsletter agent
 
-A personal agent that runs once a day on a Raspberry Pi. It runs one or more **newsletters**. The first is AI news: blogs, the Anthropic and OpenAI sites, YouTube channels, a YouTube topic search, and a web search that Claude runs with its own search tool. Each newsletter has its own sources, interest profile and recipient. The agent stores everything in Postgres and has Claude score each item against its newsletter's profile. When something scores high enough, it emails that newsletter's recipient a short digest from your Gmail account.
+A personal agent that runs once a day in Docker. It runs one or more **newsletters**. The first is AI news: blogs, the Anthropic and OpenAI sites, YouTube channels, a YouTube topic search, and a web search that Claude runs with its own search tool. Each newsletter has its own sources, interest profile and recipient. The agent stores everything in Postgres and has Claude score each item against its newsletter's profile. When something scores high enough, it emails that newsletter's recipient a short digest from your Gmail account.
 
 - A newsletter with nothing new sends no email.
 - A run that fails sends a short failure email, to you only.
 - Only digests addressed to you carry the health footer: run counts, failing sources, your ratings and the Claude token countdown.
-- Only digests addressed to you have "More like this" and "Less like this" links on each item. Each run reads the emails those links create from your Gmail Sent folder, and scoring uses your recent ratings as examples of your taste. See "Rating items" below.
+- Only digests addressed to you have "More like this" and "Less like this" links on each item, and end with a list of the items scored below your threshold, each with a "More like this" link. Each run reads the emails those links create from your Gmail Sent folder, and scoring uses your recent ratings as examples of your taste. See "Rating items" below.
 - Claude reads text and returns JSON. It gets no tools, except its web search tool in the web search step. [ARCHITECTURE.md](ARCHITECTURE.md) is the source of truth for requirements, decisions and design.
 
 ## Table of Contents
 
 - [What you need](#what-you-need)
 - [Configuration](#configuration)
-- [Deploy on the Pi](#deploy-on-the-pi)
+- [Run it with Docker](#run-it-with-docker)
+- [Deploy on a Linux server](#deploy-on-a-linux-server)
 - [Running it](#running-it)
 - [Maintenance](#maintenance)
 - [Development](#development)
@@ -36,7 +37,7 @@ A personal agent that runs once a day on a Raspberry Pi. It runs one or more **n
 
 ## What you need
 
-- A Raspberry Pi with Docker and Docker Compose. This setup was checked on a Pi 5 with Docker 29 and Compose 5.4.
+- Docker with Docker Compose, on any machine that runs Linux containers: Windows, macOS or Linux. See [Run it with Docker](#run-it-with-docker).
 - A Claude subscription token from `claude setup-token`. It is valid for one year.
 - A Gmail app password, made as below. A free Gmail account works.
 - A YouTube Data API key, made as below, if a newsletter has a `youtube_search` source.
@@ -55,7 +56,7 @@ If the page offers no app password, Google gives these reasons: 2-Step Verificat
 
 ### YouTube Data API key
 
-YouTube topic search needs a key for the YouTube Data API v3. Google's daily quota is 10,000 units, and each search term costs 100 units a run.
+YouTube topic search needs a key for the YouTube Data API v3. Google allows 100 searches a day, and each search term uses one a run. Reading the length of the videos found, to skip Shorts, costs 1 unit of the separate 10,000-unit daily quota per 50 videos ([quota costs](https://developers.google.com/youtube/v3/determine_quota_cost)).
 
 1. Create a Google Cloud project at https://console.cloud.google.com/projectcreate, such as `newsletter-agent`, and select it.
 2. Enable the API at https://console.cloud.google.com/apis/library/youtube.googleapis.com.
@@ -85,8 +86,8 @@ Each source has:
 |---|---|
 | `feed` | `url` of an RSS or Atom feed, and an optional `include`, a list of regular expressions for the URL paths to keep |
 | `sitemap` | `url` of a sitemap, and `include`, a list of regular expressions for the URL paths to keep |
-| `youtube` | `channel_id` |
-| `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. |
+| `youtube` | `channel_id`. The channel's Shorts are skipped |
+| `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. Videos of 3 minutes or less, every Short among them, are skipped. |
 | `web_search` | `queries`, the search terms. Claude searches the web for each term with its `WebSearch` tool, its only tool, and returns recent links; no other key is needed. All newsletters' terms together can't exceed `WEB_SEARCH_MAX_QUERIES`, because every search uses your Claude plan. |
 
 Only `feed` and `sitemap` sources take `include`; on any other type the configuration is refused. Add `enabled = false` to an entry to skip it. The first time a source is seen, its existing entries are stored as a baseline and not scored. The exceptions are feed items published within the last `BACKFILL_DAYS`, and web search results, which are always recent.
@@ -112,36 +113,94 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `SMTP_APP_PASSWORD` | required | The Gmail app password, without the spaces; see [Gmail app password](#gmail-app-password) |
 | `DIGEST_TO_<KEY>` | `SMTP_USERNAME` | Where newsletter `<key>`'s digest goes |
 | `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key; see [YouTube Data API key](#youtube-data-api-key) |
-| `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search |
+| `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search. Every Claude call runs at high effort |
 | `SCORE_THRESHOLD` | `6` | The lowest score, out of 10, that goes in a digest, unless a newsletter sets its own |
-| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting |
-| `DIGEST_MAX_ITEMS` | `15` | The most items in one email |
-| `SCORE_BATCH_SIZE` | `20` | Items per scoring call |
-| `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new |
+| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's most promising first, by a quick score of its title, then newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting. Items still waiting after 7 days are dropped from the queue; `backfill` can queue them again |
+| `DIGEST_MAX_ITEMS` | `8` | The most items in one email. No source fills more than 3 of them |
+| `SCORE_BATCH_SIZE` | `20` | The most items per scoring call. A call also holds at most 200,000 characters of text, and a longer item gets a call of its own |
+| `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new. It can be at most 7, because items still waiting after 7 days are dropped from the queue |
 | `YOUTUBE_SEARCH_MAX_QUERIES` | `10` | The most search terms across all newsletters, which is one search call each per run; the API allows 100 a day |
 | `WEB_SEARCH_MAX_QUERIES` | `10` | The most web search terms across all newsletters, at most 50. Each is one Claude session per run, with up to 3 searches |
 | `TRANSCRIPTS_ENABLED` | `true` | Set `false` to stop fetching YouTube transcripts |
 | `TOKEN_CREATED` | `2026-10-30` | When the Claude token was made; used for the expiry warning |
-| `RUN_DEADLINE_MINUTES` | `90` | A run stops starting new work after this long, and the process exits 15 minutes later if it's still going. It can be at most 104, so that happens before the unit's 2-hour limit |
+| `RUN_DEADLINE_MINUTES` | `90` | A run stops starting new work after this long, and the process exits 15 minutes later if it's still going. It can be at most 104, so that happens before the systemd unit's 2-hour limit |
 
 The settings code removes every secret except `CLAUDE_CODE_OAUTH_TOKEN` from the environment before Claude Code starts.
 
-## Deploy on the Pi
+## Run it with Docker
 
-The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs from `/opt/newsletter-agent`, which root owns. The units run as root, so they use only files your login account can't change.
+The agent runs in Docker on any machine that runs Linux containers: Docker Desktop on Windows or macOS, or Docker Engine with the Compose plugin on Linux. These steps were checked with Docker Desktop on macOS, and the image also builds and starts for `amd64`, the platform Docker Desktop uses on most Windows PCs. They weren't tried on Windows. There, run every command in a WSL terminal with Docker Desktop's WSL integration turned on, so the commands work as written.
 
-1. **Copy the latest reviewed commit on `main`** from your Mac to the staging folder, running this in the repository:
+1. **Get the code** and go into its folder:
+
+   ```bash
+   git clone https://github.com/bezmoradi/newsletter-agent.git
+   cd newsletter-agent
+   ```
+
+2. **Make a settings folder outside the repository,** with the secrets and the database certificate. These steps use `~/.config/newsletter-agent`; any folder outside the repository works. Postgres has two passwords: `POSTGRES_PASSWORD` for its admin account, and `AGENT_DB_PASSWORD` for the agent's own account, which owns only the agent's database. The `printf` command generates both as random hex, which needs no escaping in `DATABASE_URL`, and never shows them on screen.
+
+   ```bash
+   export NEWSLETTER_AGENT_ENV_DIR="$HOME/.config/newsletter-agent"
+   install -d -m 700 "$NEWSLETTER_AGENT_ENV_DIR"
+   install -d -m 755 "$NEWSLETTER_AGENT_ENV_DIR/db-tls"
+   (umask 077 && printf "POSTGRES_PASSWORD=%s\nAGENT_DB_PASSWORD=%s\n" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > "$NEWSLETTER_AGENT_ENV_DIR/db.env")
+   (umask 077 && touch "$NEWSLETTER_AGENT_ENV_DIR/agent.env")
+   openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 -subj /CN=db -addext subjectAltName=DNS:db \
+     -keyout "$NEWSLETTER_AGENT_ENV_DIR/db-tls/server.key" -out "$NEWSLETTER_AGENT_ENV_DIR/db-tls/server.crt"
+   chmod 600 "$NEWSLETTER_AGENT_ENV_DIR/db-tls/server.key"
+   chmod 644 "$NEWSLETTER_AGENT_ENV_DIR/db-tls/server.crt"
+   ```
+
+   Then open `agent.env` in an editor and set the [environment variables](#configuration) you need. `DATABASE_URL` takes `AGENT_DB_PASSWORD` from `db.env`.
+
+   The certificate lets the agent encrypt its database connection and check that it reached the `db` container: the agent always connects with `sslmode=verify-full`, whatever `DATABASE_URL` says, and refuses a connection without TLS. The database accepts only TLS 1.3, and over the network only the agent's account can sign in; the admin account works only inside the `db` container, as in the maintenance commands below. The `db` container copies the key, as root, to a private file of its own each time it starts. The database's accounts are created on Postgres's first start, from `db/init-agent.sql`; "Maintenance" says how to change a password later.
+
+3. **Build the image, start Postgres, and check everything,** from the repository folder:
+
+   ```bash
+   export NEWSLETTER_AGENT_ENV_DIR="$HOME/.config/newsletter-agent"
+   REVISION="$(git rev-parse HEAD)" docker compose build agent
+   docker compose up -d db
+   docker compose run --rm -T agent check
+   ```
+
+   `NEWSLETTER_AGENT_ENV_DIR` tells Compose where the settings folder is, so set it in every terminal you run the agent from; without it, Compose looks in `/etc/newsletter-agent`. Every line of `check` should start with `ok`, and the first one names the commit you built. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
+
+4. **Run it once:**
+
+   ```bash
+   docker compose run --rm -T agent run
+   ```
+
+   The first run stores most existing entries as a baseline and scores at most `MAX_ITEMS_PER_RUN` items.
+
+5. **Run it every day.** The agent doesn't schedule itself. On a Linux server, the systemd units of [Deploy on a Linux server](#deploy-on-a-linux-server) do it. Elsewhere, have your system's scheduler, such as cron, launchd or Windows Task Scheduler, run this once a day:
+
+   ```bash
+   cd <repository folder>
+   export NEWSLETTER_AGENT_ENV_DIR="$HOME/.config/newsletter-agent"
+   docker compose run --rm -T agent run || [ $? -eq 2 ] || docker compose run --rm -T --no-deps agent notify-failure
+   ```
+
+   The last command runs only when the run exits 1: it failed and couldn't send its failure email, or it stopped itself after its deadline. It tries once more to email you. The machine must be on, with Docker running, at that time. No scheduler was tried with it.
+
+## Deploy on a Linux server
+
+On a Linux server with systemd, Docker Engine and the Compose plugin, these steps install the agent so that root owns its code and secrets, and a systemd timer runs it every day. The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs from `/opt/newsletter-agent`. The units run as root, so they use only files your login account can't change. These steps were checked on a Linux `arm64` server with Docker 29 and Compose 5.4.
+
+1. **Copy the latest reviewed commit on `main`** from your computer to the staging folder, running this in the repository:
 
    ```bash
    git fetch origin
-   git archive origin/main | ssh <user>@<pi-host> \
+   git archive origin/main | ssh <user>@<server> \
      'rm -rf ~/Projects/newsletter-agent && mkdir -p ~/Projects/newsletter-agent && tar -x -C ~/Projects/newsletter-agent'
-   git rev-parse origin/main | ssh <user>@<pi-host> 'cat > ~/Projects/newsletter-agent/REVISION'
+   git rev-parse origin/main | ssh <user>@<server> 'cat > ~/Projects/newsletter-agent/REVISION'
    ```
 
-   The copy holds exactly the files of that commit, whatever branch is checked out or changed on your Mac: no `.venv`, caches, secrets or `*.local` notes. Deploys come only from `main`, which passed every check. `REVISION` records the commit: the image is built with it, and `check`, each run's first log line and every failure email show it.
+   The copy holds exactly the files of that commit, whatever branch is checked out or changed on your computer: no `.venv`, caches, secrets or `*.local` notes. Deploys come only from `main`, which passed every check. `REVISION` records the commit: the image is built with it, and `check`, each run's first log line and every failure email show it.
 
-   Then, on the Pi, install it:
+   Then, on the server, install it:
 
    ```bash
    sudo rsync -a --delete --chown=root:root ~/Projects/newsletter-agent/ /opt/newsletter-agent/
@@ -149,7 +208,7 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
 
    **Warning:** the first command empties the staging folder before copying, and this one uses `--delete`, which removes anything in `/opt/newsletter-agent` that isn't in the copy. Keep nothing else in either folder; the secrets live in `/etc/newsletter-agent`. Run both to deploy a new version, then rebuild with step 3.
 
-2. **Create the secrets and the database certificate** on the Pi. The secrets files are owned by root, readable only by root, and kept outside the repository. Postgres has two passwords: `POSTGRES_PASSWORD` for its admin account, and `AGENT_DB_PASSWORD` for the agent's own account, which owns only the agent's database. The first command generates both as random hex, which needs no escaping in `DATABASE_URL`, and never shows them on screen.
+2. **Create the secrets and the database certificate** on the server. The secrets files are owned by root, readable only by root, and kept outside the repository. The passwords and the certificate are the ones of [Run it with Docker](#run-it-with-docker), step 2, which says what each is for. The second command generates both passwords as random hex and never shows them on screen.
 
    ```bash
    sudo install -d -m 700 /etc/newsletter-agent
@@ -165,7 +224,7 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
 
    To copy `AGENT_DB_PASSWORD` into `DATABASE_URL`, open both files in one `sudoedit /etc/newsletter-agent/db.env /etc/newsletter-agent/agent.env`.
 
-   The certificate lets the agent encrypt its database connection and check that it reached the `db` container: the agent always connects with `sslmode=verify-full`, whatever `DATABASE_URL` says, and refuses a connection without TLS. The database accepts only TLS 1.3, and over the network only the agent's account can sign in; the admin account works only inside the `db` container, as in the maintenance commands below. The key stays readable by root only: the `db` container copies it, as root, to a private file of its own each time it starts. The database's accounts are created on Postgres's first start, from `db/init-agent.sql`; "Maintenance" says how to change a password later.
+   The key stays readable by root only: the `db` container copies it, as root, to a private file of its own each time it starts.
 
 3. **Build the image, start Postgres, and check everything:**
 
@@ -176,7 +235,7 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
    sudo docker compose run --rm -T agent check
    ```
 
-   Every line should start with `ok`, and the first one names the revision you copied. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
+   Every line should start with `ok`, and the first one names the revision you copied. [Run it with Docker](#run-it-with-docker), step 3, says what the checks do.
 
 4. **Install the systemd units:**
 
@@ -209,67 +268,80 @@ The code arrives in a staging folder, `~/Projects/newsletter-agent`, and runs fr
    systemctl list-timers newsletter-agent.timer
    ```
 
-   The timer fires at 07:00 Pi time, give or take 15 minutes. If the Pi was off at that time, the run happens at the next boot.
+   The timer fires at 07:00 server time, give or take 15 minutes. If the server was off at that time, the run happens at the next boot.
 
 ## Running it
 
-Run these on the Pi from `/opt/newsletter-agent`.
+Run these from the repository folder, with `NEWSLETTER_AGENT_ENV_DIR` set as in [Run it with Docker](#run-it-with-docker). On a Linux server set up as in [Deploy on a Linux server](#deploy-on-a-linux-server), run them from `/opt/newsletter-agent` with `sudo`, and leave `NEWSLETTER_AGENT_ENV_DIR` unset.
 
 | Task | Command |
 |---|---|
-| Check the configuration and every connection | `sudo docker compose run --rm -T agent check` |
-| Run now | `sudo systemctl start newsletter-agent.service` |
-| Read today's log | `sudo journalctl -u newsletter-agent --since today` |
-| See recent runs | `sudo docker compose exec db psql -U newsletter_agent -c "select id, started_at, status, error from runs order by id desc limit 5"` |
-| Resend digests that failed to send | `sudo docker compose run --rm -T agent send-pending` |
-| Score older entries of one source | `sudo docker compose run --rm -T agent backfill --newsletter ai --source anthropic --since 2026-10-01` |
-| Pause the daily run | `sudo systemctl disable --now newsletter-agent.timer` |
+| Check the configuration and every connection | `docker compose run --rm -T agent check` |
+| Run now | `docker compose run --rm -T agent run`; on a Linux server, `sudo systemctl start newsletter-agent.service` |
+| Read today's log | On a Linux server, `sudo journalctl -u newsletter-agent --since today`; elsewhere, wherever your scheduler keeps the command's output |
+| See recent runs | `docker compose exec db psql -U newsletter_agent -c "select id, started_at, status, error from runs order by id desc limit 5"` |
+| Resend digests that failed to send | `docker compose run --rm -T agent send-pending` |
+| Score older entries of one source | `docker compose run --rm -T agent backfill --newsletter ai --source anthropic --since 2026-10-01` |
+| Pause the daily run | On a Linux server, `sudo systemctl disable --now newsletter-agent.timer`; elsewhere, turn off your scheduler's task |
 
 **Exit codes:**
 
 - `run` exits 0 when the run succeeded or partly succeeded.
 - It exits 2 when it failed and sent the failure email.
-- It exits 1 when it failed and couldn't send one, or when it was still running 15 minutes past `RUN_DEADLINE_MINUTES` and stopped itself. systemd then starts `newsletter-agent-failure.service`, which tries again.
+- It exits 1 when it failed and couldn't send one, or when it was still running 15 minutes past `RUN_DEADLINE_MINUTES` and stopped itself. On a Linux server, systemd then starts `newsletter-agent-failure.service`, which tries again; elsewhere, the command of [Run it with Docker](#run-it-with-docker), step 5, does.
 
-**Rating items.** Under each item in your own digests are two links, "More like this" and "Less like this". Tapping one opens an email to yourself with a subject such as `newsletter-agent feedback more 1234 3f9a0c51d2e7`; send it as it is. The last part names your database, so ratings from a test database or one that was rebuilt are never mixed in. The next run reads it from your Sent folder and stores the rating:
-- Scoring then shows Claude your latest 5 likes and 5 dislikes from the last 60 days, as examples that refine the newsletter's `interests.md`. The profile still decides what's in scope.
+**Rating items.** Under each item in your own digests are two links, "More like this" and "Less like this", and each item in the list below your threshold has a small "More like this" link. Tapping one opens an email to yourself with a subject such as `newsletter-agent feedback more 1234`, where 1234 is the item's number; send it as it is. The next run reads it from your Sent folder and stores the rating:
+- Scoring and the digest then show Claude up to 5 of your likes and 5 dislikes from the last 180 days, at most 2 of each from one source, as examples that refine the newsletter's `interests.md`. The profile still decides what's in scope, and a dislike counts against that item, not its whole topic.
 - Your footer counts your ratings by source, which helps decide which sources to keep. If ratings couldn't be read, the footer says why, and the run still goes on.
+- Once at least 20 new ratings exist, and at most once every 30 days, you get an email with Claude's suggested edits to `interests.md`. Nothing changes until you edit the file in the repository and deploy it.
 - Rating an item again replaces the earlier rating. Deleting the email after the run doesn't undo a rating.
 - A digest for anyone else has no links.
+
+**What's in your digest.** Claude scores each item on its whole article or video transcript, and picks the day's set from the best 30 candidates, at most 3 from one source, leaving out stories that repeat another item or one sent in the last 7 days. Each item then gets a summary Claude writes from its whole text, meant to save you opening the link: a "Highlights:" line right under the title saying what stands out and what the original adds, so you can decide whether to read on or open it, then a sentence or two on what it is and the main takeaways with their numbers, names and methods. A second Claude call checks the summary against the source, and a third corrects it when the check finds a problem. That takes three calls per item, so it uses more of your plan than shorter summaries would. An item Claude couldn't summarize shows the reason it was picked, with a note saying so. Your own digests end with a list titled "Scored below your threshold": every item scored in the last 7 days that didn't reach your threshold, by title, source and score, each listed once. Its "More like this" link teaches scoring what you'd have wanted; it doesn't bring the item back.
+
+**Keep rating emails out of your Inbox.** Each rating email also lands in your Inbox. Don't delete it there before the next run: Gmail moves it to Trash, it leaves the Sent folder, and the rating is lost. A Gmail filter can archive rating emails as they arrive, so they stay in Sent and never show in your Inbox. Create it once, in Gmail in a browser, because the Gmail apps can't create filters:
+
+1. In the search box, enter `subject:"newsletter-agent feedback"`.
+2. Click the "Show search options" icon at the right end of the search box, then **Create filter**.
+3. Tick **Skip the Inbox (Archive it)**, and **Also apply filter to matching conversations** if Gmail offers it, then click **Create filter**.
+
+Each rating email takes a few KB. The agent reads only the last 30 days and has stored those ratings by then, so you can delete older ones: search for `subject:"newsletter-agent feedback" older_than:30d`.
 
 **On a Mac,** if clicking a rating link in Apple Mail does nothing, open Mail → Settings → General and set "Default email reader" to Mail. A click then opens a new message in Apple Mail; send it from the Gmail account in `SMTP_USERNAME`, so it lands in the Sent folder the agent reads.
 
 See the stored ratings with:
 
 ```bash
-sudo docker compose exec db psql -U newsletter_agent -c "select f.sent_at, f.liked, i.title from feedback f join items i on i.id = f.item_id order by f.sent_at desc limit 20"
+docker compose exec db psql -U newsletter_agent -c "select f.sent_at, f.liked, i.title from feedback f join items i on i.id = f.item_id order by f.sent_at desc limit 20"
 ```
 
-**A stuck run.** If a scheduled run's container ever outlives its unit, the next scheduled run can't start: Docker refuses a second container named `newsletter-agent-run`, so that unit fails at once. Its clean-up step removes the old container, and you get the generic notice that the run stopped before it could report. The run after that marks the old run `abandoned` and works normally. A run you started by hand with `docker compose run` is different: if it hangs, it keeps the run lock, and each scheduled run sends a failure email saying a run "still holds the run lock". Find its container with `sudo docker ps --filter name=newsletter-agent` and remove it with `sudo docker rm -f <name>`.
+**A stuck run.** On a Linux server, if a scheduled run's container ever outlives its unit, the next scheduled run can't start: Docker refuses a second container named `newsletter-agent-run`, so that unit fails at once. Its clean-up step removes the old container, and you get the generic notice that the run stopped before it could report. The run after that marks the old run `abandoned` and works normally. A run started any other way, by hand or by another scheduler, is different: if it hangs, it keeps the run lock, and each scheduled run sends a failure email saying a run "still holds the run lock". Find its container with `docker ps --filter name=newsletter-agent` and remove it with `docker rm -f <name>`.
 
-**What a missing email means.** No email can mean a quiet day, but also a Pi that's off or a broken Gmail password, because email is the only alert channel. Each digest's footer counts the runs since the last digest. If several days pass without an email, check the log.
+**What a missing email means.** No email can mean a quiet day, but also a machine that's off or a broken Gmail password, because email is the only alert channel. Each digest's footer counts the runs since the last digest. If several days pass without an email, check the log.
 
 ## Maintenance
 
+Run the commands below as in [Running it](#running-it).
+
 - **Renew the Claude token before 2027-10-30.**
   1. Run `claude setup-token`.
-  2. Edit `/etc/newsletter-agent/agent.env` with `sudoedit`: replace `CLAUDE_CODE_OAUTH_TOKEN` and set `TOKEN_CREATED` to the new date.
+  2. In `agent.env` in your settings folder, or on a Linux server with `sudoedit /etc/newsletter-agent/agent.env`, replace `CLAUDE_CODE_OAUTH_TOKEN` and set `TOKEN_CREATED` to the new date.
 
   Each digest shows the days left, and moves a warning to the top in the last 30 days. An expired token makes the run fail and send a failure email.
 
   GitHub has its own copy, the repository secret `CLAUDE_CODE_OAUTH_TOKEN`, which Claude review and `@claude` use. When Claude review starts failing with a sign-in error, run `/install-github-app` in Claude Code again, or `gh secret set CLAUDE_CODE_OAUTH_TOKEN` with a new token.
 - **After changing your Google password,** create a new app password at https://myaccount.google.com/apppasswords and replace `SMTP_APP_PASSWORD`. Google revokes app passwords when the password changes.
-- **Edit sources, search terms or interests** in `config/newsletters/` in the repository, then copy the code to the Pi again (step 1). Don't edit them on the Pi: the next deploy would overwrite the change. The folder is mounted into the container, so the next run uses it without a rebuild. Changing a source's type, URL, channel or include rules makes its next collection start again from a baseline, so old entries aren't scored as new.
-- **Turn transcripts off** with `TRANSCRIPTS_ENABLED=false` if YouTube blocks the Pi. Each blocked video shows `IpBlocked` in `item_content.error`, and videos are scored on their title and description either way. YouTube blocked transcript requests from the home network on 2026-10-30, after about two dozen test requests that day.
+- **Edit sources, search terms or interests** in `config/newsletters/` in the repository. On a Linux server, edit them on your computer and deploy again (step 1); don't edit them on the server, because the next deploy would overwrite the change. The folder is mounted into the container, so the next run uses it without a rebuild. Changing a source's type, URL, channel or include rules makes its next collection start again from a baseline, so old entries aren't scored as new.
+- **Turn transcripts off** with `TRANSCRIPTS_ENABLED=false` if YouTube blocks your machine's address. Each blocked video shows `IpBlocked` in `item_content.error`, and videos are scored on their title and description either way. YouTube blocked transcript requests from a home network on 2026-10-30, after about two dozen test requests that day.
 - **Never edit a migration file that a database has already applied.** Add a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there, such as `<next number>_add_column.sql`; the next run applies it.
-- **Change a database password** when you want to, or if `db.env` was ever exposed. In `/opt/newsletter-agent`, run `sudo docker compose exec db psql -U postgres -c '\password newsletter_agent'` (or `'\password postgres'` for the admin account), and enter a new value from `openssl rand -hex 24` at the prompt. Then put it in `db.env`, and for the agent's account in `DATABASE_URL` in `agent.env`, with `sudoedit`.
-- **Replace the database certificate** before it expires, 10 years after you made it, or if its key was ever exposed: make a new pair with the commands of step 2, then run `sudo docker compose up -d --force-recreate db`. The agent reads the new certificate on its next run.
+- **Change a database password** when you want to, or if `db.env` was ever exposed. Run `docker compose exec db psql -U postgres -c '\password newsletter_agent'` (or `'\password postgres'` for the admin account), and enter a new value from `openssl rand -hex 24` at the prompt. Then put it in `db.env`, and for the agent's account in `DATABASE_URL` in `agent.env`; on a Linux server, with `sudoedit`.
+- **Replace the database certificate** before it expires, 10 years after you made it, or if its key was ever exposed: make a new pair with the `openssl` commands of step 2 of [Run it with Docker](#run-it-with-docker), or of [Deploy on a Linux server](#deploy-on-a-linux-server) on a server, then run `docker compose up -d --force-recreate db`. The agent reads the new certificate on its next run.
 - **Before upgrading `claude-agent-sdk`,** rebuild and run `check` with the real token, then again with an invalid one. The invalid run must report `ClaudeAuthError`. A new SDK version may change how the OAuth token is read.
-- **Stop everything and keep the data** with `sudo docker compose down`.
+- **Stop everything and keep the data** with `docker compose down`.
 
-  **Warning:** `sudo docker compose down -v` deletes every collected item and run, and it can't be undone.
+  **Warning:** `docker compose down -v` deletes every collected item and run, and it can't be undone.
 
-There are no backups: the Postgres data lives only in the `db-data` volume on the Pi.
+There are no backups: the Postgres data lives only in the Compose project's `db-data` volume.
 
 ## Development
 
@@ -293,17 +365,19 @@ GitHub Actions then runs 17 checks, from PR hygiene to the secret scan. ARCHITEC
 
 **This repository is public.** Keep personal details, your machines' network and access details, and secrets out of every commit, issue and comment. Git ignores any file with `.local` in its name, so private notes can live in one, such as `CLAUDE.local.md`, which Claude Code also loads beside `CLAUDE.md`.
 
-To run against a local Postgres in Docker, put `db.env`, `agent.env` and a `db-tls` folder made as in step 2 of "Deploy on the Pi" in a folder outside the repository, then:
+To try a change, run it as in [Run it with Docker](#run-it-with-docker), with a settings folder of its own and under its own Compose project name, so it keeps its own database beside a deployed one:
 
 ```bash
-export NEWSLETTER_AGENT_ENV_DIR=<that folder>
+export NEWSLETTER_AGENT_ENV_DIR=<its settings folder>
 docker compose -p newsletter-agent-local up -d db
 docker compose -p newsletter-agent-local build agent
 docker compose -p newsletter-agent-local run --rm -T agent check
 docker compose -p newsletter-agent-local run --rm -T agent run
 ```
 
-For cheap local runs, set `SCORE_MODEL`, `DIGEST_MODEL` and `SEARCH_MODEL` to `claude-haiku-5-5` and `MAX_ITEMS_PER_RUN` to about 12.
+Keep the default models, Opus at high effort, so its scores match what your deployed agent sends. Set `MAX_ITEMS_PER_RUN` to about 12 to limit plan usage.
+
+A local database reads the same Sent folder as your deployed agent's. A rating email names only an item's number, so a rating you send from a local digest can be stored by the deployed agent against an unrelated item with the same number, if one of its digests included that item. Delete such rows from the deployed database's `feedback` table by hand, by item number and time.
 
 ## Author
 

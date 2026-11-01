@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
@@ -23,6 +24,7 @@ log = logging.getLogger(__name__)
 PROMPT_VERSION = "search_v1"
 FIRST_WINDOW_DAYS = 2
 MAX_WINDOW_DAYS = 7
+STALE_GRACE_DAYS = 3
 MAX_RESULTS = 10
 TIMEOUT_SECONDS = 300
 
@@ -57,7 +59,8 @@ def collect(
     run's search window still covers the terms that didn't run. A sign-in or availability failure
     stops the source and is raised. Each error raised carries the usage of every session the
     source ran. Claude's links are kept only if they are plain http or https URLs whose host
-    resolves to public addresses; the enrich step fetches them, which checks again.
+    resolves to public addresses; the enrich step fetches them, which checks again. A result
+    dated more than 3 days before the search window is dropped.
     """
     days = _window_days(state.last_success_at)
     found: dict[str, Candidate] = {}
@@ -81,8 +84,21 @@ def collect(
             raise
         valid += 1
         calls.append(result)
+        oldest = datetime.now(UTC) - timedelta(days=days + STALE_GRACE_DAYS)
         for candidate in candidates:
-            found.setdefault(candidate.external_id, candidate)
+            if candidate.published_at is not None and candidate.published_at < oldest:
+                log.info(
+                    "web search result too old",
+                    extra={"fields": {"term": term, "url": describe(candidate.url)}},
+                )
+                continue
+            earlier = found.get(candidate.external_id)
+            if earlier is None:
+                found[candidate.external_id] = replace(candidate, search_terms=(term,))
+            elif term not in earlier.search_terms:
+                found[candidate.external_id] = replace(
+                    earlier, search_terms=(*earlier.search_terms, term)
+                )
     if not valid:
         raise llm.ClaudeOutputError(
             f"all {len(source.queries)} web search terms returned invalid output", tuple(calls)

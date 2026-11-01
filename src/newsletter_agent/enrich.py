@@ -11,7 +11,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from newsletter_agent import http
 from newsletter_agent.extract import decode, extract
 
-MAX_TEXT = 100_000
+MAX_TEXT = 400_000
 TRANSCRIPT_TIMEOUT = 30
 PARSE_DEADLINE = 30
 PAGE_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})

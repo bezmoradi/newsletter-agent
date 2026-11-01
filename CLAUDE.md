@@ -51,7 +51,7 @@ Running the agent needs Postgres and the secrets. See README.md, "Development", 
 
 ## Verify a change
 
-Run the code path you changed against real services, with the cheapest settings: `SCORE_MODEL=claude-haiku-5-5`, `DIGEST_MODEL=claude-haiku-5-5`, `SEARCH_MODEL=claude-haiku-5-5` and a small `MAX_ITEMS_PER_RUN`.
+Run the code path you changed against real services, with the Pi's models, Opus at high effort (the owner's choice, so local scores match the Pi's), and a small `MAX_ITEMS_PER_RUN`.
 
 - `check` covers the configuration, the database, SMTP, the YouTube key, one Claude call, and one web search when a newsletter has a `web_search` source.
 - `run` against a local database covers the pipeline. Inspect the `runs`, `items`, `assessments` and `digests` tables afterward.
@@ -70,7 +70,7 @@ Each external boundary has one module:
 
 The rest of the package:
 
-- `run.py` runs the steps in `steps.py` in order: read ratings, collect, enrich, assess, digest, deliver.
+- `run.py` runs the steps in `steps.py` in order: read ratings, collect, expire, triage, enrich, assess, digest, deliver, suggest profile.
 - `sources/` holds one collector per source type, registered in `COLLECTORS`.
 - Prompts live in `src/newsletter_agent/prompts/` and are filled with `prompts.render(name, **values)`, which fills every placeholder in one pass, so untrusted text filled into one placeholder is never searched for another. Don't chain `.replace` calls on a template. Migrations live in `src/newsletter_agent/migrations/`. Both ship inside the package.
 - **Configuration is per newsletter.** Each newsletter is a folder, `config/newsletters/<key>/`, holding `newsletter.toml` (its `name`, an optional `score_threshold`, and its `[[sources]]`) and `interests.md`.
@@ -82,9 +82,9 @@ The rest of the package:
 - **Claude gets no tools, except `WebSearch` in the web search step.** The owner made that exception as a product decision (REQ-29).
   - `llm.structured` passes `tools=[]` and fails closed unless the session offers exactly `["StructuredOutput"]`. Only `sources/web_search.py` passes `web_search=True`, which allows `WebSearch` and nothing else, and the check then expects exactly `StructuredOutput` and `WebSearch`. Don't relax either check or add another tool; a new capability must be written as code, unless the owner decides otherwise.
   - Links that Claude's search returns are untrusted. `web_search._page_url` keeps only valid `http` or `https` URLs, at most 2,000 characters, without credentials, on port 443 once turned into https, whose host resolves to public addresses.
-  - Fetched text is untrusted. It goes into prompts inside `<item>` tags, through `text.fence`.
-  - Links in emails come only from stored item URLs, never from Claude's text. The one exception is the pair of `mailto:` rating links that `mail.feedback_link` builds from `SMTP_USERNAME`, the item's ID and the database's feedback token, only in digests addressed to `SMTP_USERNAME`. `mail.render_digest` and `mail.render_failure` pass every text they show (titles, summaries, score reasons, the intro, error text in the footer and the failure reason) through `text.defang`, and every value in the HTML is escaped. Don't defang elsewhere, and don't add a shown value that skips it.
-  - Titles of rated items are untrusted too. They go into the scoring prompt inside `<feedback>`, through `text.fence`, which escapes both `item` and `feedback` tags.
+  - Fetched text is untrusted. It goes into prompts inside `<item>` tags, through `text.fence`. So does Claude's summary of it, and the check's findings, when the check and the rewrite read them.
+  - Links in emails come only from stored item URLs, never from Claude's text. The one exception is the `mailto:` rating links that `mail.feedback_link` builds from `SMTP_USERNAME` and the item's ID, a pair for each summarized item and one for each item listed below the threshold, only in digests addressed to `SMTP_USERNAME`. `mail.render_digest`, `mail.render_failure` and `mail.render_profile_suggestions` pass every text they show (titles, summaries, score reasons, profile suggestions, error text in the footer and the failure reason) through `text.defang`, and every value in the HTML is escaped. Don't defang elsewhere, and don't add a shown value that skips it.
+  - Titles of rated items, and of items sent in the last 7 days, are untrusted too. They go into the scoring, digest and profile prompts inside `<feedback>`, through `text.fence`, which escapes both `item` and `feedback` tags.
 - **`settings.take_secrets` removes secrets from `os.environ` before any Claude call,** because the SDK hands the whole environment to Claude Code. Only `CLAUDE_CODE_OAUTH_TOKEN` stays. Add any new secret to `SECRET_VARS`.
 - **`http.py` fetches over https only and refuses non-public addresses** (loopback, private, link-local, CGNAT, Docker networks, and their IPv4-mapped and NAT64 forms) on every request and every redirect, and connects only to the addresses it checked, so DNS rebinding can't redirect it. It allows no port but 443: the owner accepted fetching any public domain (REQ-57), not any port. Keep that check and the pinned connection, the upgrade of http to https, its socket timeout, its 90-second deadline over the whole request, its size cap, and its dropping of the caller's headers on a cross-host redirect. The deadline uses `SIGALRM`, so call `http.get` and `http.deadline` only from the main thread, and never one inside the other.
 - **Every text written to Postgres is made storable** by `text.storable`, which drops NUL characters and broken Unicode: `store._safe` applies it to every text column, and `llm.structured` to Claude's whole output, which also reaches `jsonb`. Postgres refuses either, and a refused write of an error message once failed every later run.
@@ -102,7 +102,7 @@ The rest of the package:
 - **One bad entry fails only its source.** `steps._collect_source` skips a candidate with an invalid or over-long URL, and turns any error while storing a source's items into a failure of that source, never of the run.
 - **Runs must be safe to repeat.** Inserts use `on conflict do nothing`, a digest is keyed by its run and newsletter, and an advisory lock stops overlapping runs.
 - **Never edit a migration that any database has applied.** Every schema change, adding or dropping a column included, is a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there. `migrate()` applies it at the start of the next run, in one transaction. Dropping a column destroys its data, and there are no backups.
-- **Owner-only information stays with the owner.** Failure emails go to `SMTP_USERNAME`. The health footer, the token warning and the rating links appear only on digests addressed to `SMTP_USERNAME`, and only ratings of items from those digests are stored. Another newsletter's recipient must never see source errors, run counts or setup instructions.
+- **Owner-only information stays with the owner.** Failure emails go to `SMTP_USERNAME`. The health footer, the token warning, the rating links and the list of items below the threshold appear only on digests addressed to `SMTP_USERNAME`, profile suggestions go only to `SMTP_USERNAME`, and only ratings of items those digests included or listed are stored. Another newsletter's recipient must never see source errors, run counts or setup instructions.
 - **Search caps are shared.** Google's quota belongs to the API key, so all newsletters' YouTube search terms together must fit under `YOUTUBE_SEARCH_MAX_QUERIES`. Web searches all use the owner's Claude plan, so all web search terms together must fit under `WEB_SEARCH_MAX_QUERIES`.
 - **Auth failures must be classified as auth failures.**
   - An invalid token yields a `ResultMessage` with `subtype="success"` and `is_error=True`, so check `is_error` first.
@@ -115,7 +115,7 @@ The rest of the package:
 
 - **This repository is public.** The Pi's private details and the owner's own rules for it are in `CLAUDE.local.md`, which is gitignored (`*.local.*`) and loads beside this file when it exists. Never copy anything from it, or the Pi's hostname, user, password, ports or network details, or anyone's personal details or email address, into a tracked file, an issue, a pull request or a comment. History is permanent.
 - Access instructions are in the owner's knowledge base, outside this repository.
-- On the Pi, this project runs from `/opt/newsletter-agent`, owned by root, installed from the staging folder `~/Projects/newsletter-agent` (README, "Deploy on the Pi").
+- On the Pi, this project runs from `/opt/newsletter-agent`, owned by root, installed from the staging folder `~/Projects/newsletter-agent` (README, "Deploy on a Linux server").
 - Deploy only a reviewed `main` commit (REQ-60): `git archive origin/main` into the staging folder, with the commit in `REVISION` for the build. Never copy the Mac's working tree or another branch to the Pi.
 - Secrets are in `/etc/newsletter-agent/agent.env` and `db.env`, owned by root with mode `0600`. Never put secrets in the repository or in chat.
 - Deploying, enabling the timer, or sending real email needs the owner's go-ahead each time.

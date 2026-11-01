@@ -91,10 +91,13 @@ def _run(settings: Settings) -> int:
             )
             steps.read_ratings(conn, settings, current)
             steps.collect(conn, settings, current)
+            steps.expire(conn, current)
+            steps.triage(conn, settings, current)
             steps.enrich(conn, settings, current)
             steps.assess(conn, settings, current)
             steps.digest(conn, settings, current)
             steps.deliver(conn, settings, current)
+            steps.suggest_profile(conn, settings, current)
             status, error = _outcome(conn, current)
         except Exception as e:
             store.rollback_quietly(conn)
@@ -147,7 +150,8 @@ def _lock_held(conn: store.Connection, settings: Settings) -> int:
         return EXIT_OK
     reason = (
         f"a run that started at {started:%Y-%m-%d %H:%M} UTC still holds the run lock, so no "
-        "run can start; the container of a run started by hand is probably stuck. On the Pi, "
+        "run can start; the container of a run started by hand is probably stuck. On a Linux "
+        "server set up as in the README, "
         "find it with `sudo docker ps --filter name=newsletter-agent` and remove it with "
         "`sudo docker rm -f <name>`"
     )
