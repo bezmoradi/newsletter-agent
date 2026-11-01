@@ -269,7 +269,7 @@ On a Linux server with systemd, Docker Engine and the Compose plugin, these step
    sudo docker compose run --rm -T agent check
    ```
 
-   `migrate` applies the migrations the new version brings and prints them, or `no pending migrations`. Each runs in its own transaction, so one that fails leaves the database as it was, and the deploy stops there. Runs apply anything still pending first, so a deploy that skips `migrate` still works; the migration then happens at the next run, unwatched. Every line of `check` should start with `ok`, the first one naming the revision you copied, and the `db` line should report 0 pending migrations. [Run it with Docker](#run-it-with-docker), step 3, says what the checks do.
+   `migrate` applies the migrations the new version brings and prints them, or `no pending migrations`. Each one commits on its own, so one that fails is rolled back and the deploy stops there; any applied before it stay applied. Runs apply anything still pending first, so a deploy that skips `migrate` still works; the migration then happens at the next run, unwatched. Every line of `check` should start with `ok`, the first one naming the revision you copied, and the `db` line should report 0 pending migrations. [Run it with Docker](#run-it-with-docker), step 3, says what the checks do.
 
 4. **Install the systemd units:**
 
