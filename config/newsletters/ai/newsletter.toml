@@ -57,10 +57,14 @@ type = 'youtube_search'
 queries = [
     'harness engineering',
     'software factory',
-    'AI skills',
-    'agent skills',
-    'context engineering',
-    'coding agents',
+    'dark factory software development',
+    'agent skills SKILL.md',
+    'context engineering coding agents',
+    'agentic engineering',
+    'coding agents case study',
+    'multi-agent coding workflow',
+    'coding agent evals',
+    'background coding agents',
 ]
 
 [[sources]]
@@ -69,11 +73,15 @@ name = 'Web search'
 type = 'web_search'
 queries = [
     'harness engineering',
-    'software factory',
-    'AI skills',
+    'software factory and dark factory with AI agents',
     'agent skills',
-    'context engineering',
-    'coding agents',
+    'context engineering for coding agents',
+    'coding agents in production: case studies and lessons learned',
+    'coding agent failures and postmortems',
+    'multi-agent coding with parallel agents and git worktrees',
+    'verifying agent-generated code: tests, review agents and quality gates',
+    'background coding agents from issue to pull request',
+    'coding agent sandboxes, permissions and prompt injection',
 ]
 
 [[sources]]

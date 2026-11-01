@@ -101,7 +101,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
 | REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 24 planted violations (section 14) |
 | REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It approved pull request #5, and on pull request #7 it blocked two commits, on the README banner and a gap in the requirement IDs, before approving the third (section 14) |
-| REQ-68 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" with a "Merged" badge, the `diff` block, and the line "✅ Approved by human reviewers · All checks passed". The "Merged" badge and that line are your decision and part of the banner's design. They don't state the result of any merge, review or check. Replaces REQ-67, which left both out | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows the banner, badge and line included |
+| REQ-68 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 STOP VIBE CODING" in uppercase with a "Merged" badge, the `diff` block, and the line "✅ Approved by human reviewers · All checks passed". The "Merged" badge and that line are your decision and part of the banner's design. They don't state the result of any merge, review or check. Replaces REQ-67, which left both out | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows the banner, badge and line included |
 | REQ-69 | Rating links carry no database token: a rating email's subject is `newsletter-agent feedback more` or `less` and the item's ID. You accept that a rating sent from one database's digest can land on an unrelated item in another database that reads the same Gmail, to keep the links plain for anyone setting up or reading the project | Built (section 7); accepted risk (section 16) |
 | REQ-70 | Claude runs as Opus at high effort, on the Mac and on the Pi, as a starting point | `llm.EFFORT`; `check` passed with Opus 5.5 and Haiku 5.5 at high effort. Local runs use the Pi's models (README, "Development") |
 | REQ-71 | YouTube Shorts are dropped: from channel feeds, entries linked as `/shorts/`; from YouTube search, videos of 3 minutes or less. On 2026-10-31, 192 of the 379 videos search had found were that short, and 14 of the 75 entries in the five channels' feeds were Shorts. A minimum of views or likes was considered and left out: search finds videos within a day or two of upload, half of them had fewer than 300 views, and the best-scored one had 4 | Built (section 7) |
@@ -1051,6 +1051,11 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
     - it took 11 minutes 44 seconds and 34 Claude calls, estimated at $5.21, with about 6½ minutes for the 8 summaries.
 
     The summaries ran 237–478 words, so the prompts now ask for 4 takeaways of at most about 50 words each. The two longest items, summarized again, came to 362 and 375 words.
+- **The `ai` newsletter's profile and search terms rewritten from your brief on agentic software engineering, on the Mac, 2026-11-01,** with Opus 5.5 at high effort. The profile takes the brief's criteria for substantive material, its topic families with their terms, its exclusions and its central question, and keeps Go and durable execution; the search terms combine its topics with words like "case study" and "postmortem", 10 in each list, and leave named tools to the profile, as in #25.
+  - `check` loaded the configuration with 10 of 10 terms in each list.
+  - The 10 new web search terms, run once through the web search source, returned 81 pages for about $3.48. Their titles and the 48 that the old 6 terms had found on the Pi that day were scored together, by the title pass with the new profile: the new terms' titles averaged 6.1 out of 10, with 51 (63%) at 6 or more, against 4.4 and 14 (29%). "AI skills" averaged 1.1 on the web and 1.4 on YouTube, mostly careers and workforce training.
+  - The new YouTube terms weren't run: YouTube's search API answered HTTP 429 after the day's earlier tests.
+  - The same 20 stored items, scored once with each profile on their whole text, averaged 4.85 with the old profile and 4.25 with the new one, and 9 passed with each. The new profile was stricter about beginner demos and news round-ups, and scored a security incident with a coding-agent extension higher.
 
 Not verified yet:
 
@@ -1111,7 +1116,7 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 **Open questions:**
 
 - **A newsletter for someone else on your subscription.** The Consumer Terms say "You also may not make your Account available to anyone else". You run the agent, and the other person only receives an email. Whether that counts is your judgement, not a settled reading. Decide it before a newsletter for someone else goes live. Your own newsletters aren't affected.
-- **Pruning the seed sources** (25 sources, with 7 YouTube and 7 web search terms) and the interest profile, before the first real run. REQ-28 asks for short lists.
+- **Pruning the seed sources** (25 sources). REQ-28 asks for short lists. The interest profile and the search terms were rewritten from your brief on 2026-11-01 (section 14), with 10 YouTube and 10 web search terms, all of the default caps, so a second newsletter's terms need a higher `YOUTUBE_SEARCH_MAX_QUERIES` or `WEB_SEARCH_MAX_QUERIES`.
 - **Two GitHub settings:** Dependabot alerts, and an Actions policy that allows only pinned, listed actions. Deferred: you'll decide later.
 - **A personal email in the public history.** The merge commit of pull request #2 has a personal address as its author, because GitHub uses your primary email for merges made in the browser. GitHub's "Keep my email addresses private" setting stops new ones; removing this one needs a rewrite of `main`, which the rule on `main` blocks. Deferred: you said it isn't a priority now.
 
@@ -1281,7 +1286,7 @@ The design-pattern review found no new pattern needed. One light one stays: a di
 
 ## 20. Next steps
 
-1. Prune the seed sources, search terms and interest profile in `config/newsletters/ai/`.
+1. Prune the seed sources in `config/newsletters/ai/`; the search terms and the interest profile follow your brief since 2026-11-01. Run the new YouTube search terms once and compare them with the old ones, which wasn't possible that day.
 2. Done on 2026-10-31: the Gmail app password and a YouTube Data API key exist, and both worked on the Mac (section 14). They go into `agent.env` on the Pi when you deploy.
 3. Deploy on the Pi, following the README's "Deploy on a Linux server". That needs your go-ahead, because it enables the timer and sends real email. The Pi still holds a copy from before the rename (REQ-33), in `~/Projects/ai-news-agent`, and its image `ai-news-agent:local`. No containers, volumes, units or secrets were created for it. Deploy through the staging folder `~/Projects/newsletter-agent` to `/opt/newsletter-agent`, then remove the old folder and image.
 4. Over the first week, measure plan usage per run, including web search, and transcript success. Then tune the models, `SEARCH_MODEL` included, the threshold, the sources and the search terms.
