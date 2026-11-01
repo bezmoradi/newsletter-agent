@@ -299,8 +299,8 @@ def items_to_enrich(
     crowd out the others. Within a source, items go by their title score, then newest first.
     """
     return conn.execute(
-        "select id, external_id, url, title, source_type from (select i.id, i.external_id, "
-        "i.url, i.title, s.type as source_type, "
+        "select id, external_id, url, title, title_score, source_type from (select i.id, "
+        "i.external_id, i.url, i.title, i.title_score, s.type as source_type, "
         "coalesce(i.published_at, i.first_seen_at) as sorted_at, row_number() over "
         "(partition by i.source_id order by i.title_score desc nulls last, "
         "coalesce(i.published_at, i.first_seen_at) desc, i.id desc) as source_rank "

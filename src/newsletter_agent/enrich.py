@@ -7,7 +7,7 @@ from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import RequestBlocked, YouTubeTranscriptApi
 
 from newsletter_agent import http
 from newsletter_agent.extract import decode, extract
@@ -93,6 +93,13 @@ def transcript(video_id: str) -> Content:
         except requests.ConnectionError:
             _ipv6.failed = True
     return Content(text=_storable(_fetch_transcript(video_id, _TimeoutAdapter()), MAX_TEXT))
+
+
+def refused(error: BaseException) -> bool:
+    """Whether the error is YouTube refusing this address: a 429 or a bot check, which
+    youtube-transcript-api raises as IpBlocked or RequestBlocked.
+    """
+    return isinstance(error, RequestBlocked)
 
 
 def _fetch_transcript(video_id: str, adapter: _TimeoutAdapter) -> str:
