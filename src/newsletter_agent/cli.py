@@ -11,7 +11,7 @@ import json
 import logging
 import os
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("newsletter_agent")
 
-CHECKS = ("db", "smtp", "imap", "youtube", "claude", "websearch")
+CHECKS = ("db", "smtp", "imap", "youtube", "likes", "claude", "websearch")
 WEB_SEARCH_CHECK_TERM = "artificial intelligence"
 CHECK_SCHEMA = {
     "type": "object",
@@ -89,6 +89,16 @@ def _parser() -> argparse.ArgumentParser:
         "--limit", type=_positive_int, help="at most this many; default MAX_ITEMS_PER_RUN"
     )
     sub.add_parser("notify-failure", help="email a notice that the scheduled run died")
+    authorize = sub.add_parser(
+        "authorize-youtube",
+        help="sign in to Google once, in a browser, so the agent can read your YouTube likes",
+    )
+    authorize.add_argument(
+        "--client-file", required=True, type=Path, help="the Desktop app client's JSON file"
+    )
+    authorize.add_argument(
+        "--env-file", required=True, type=Path, help="the agent.env to save the sign-in to"
+    )
     return parser
 
 
@@ -105,6 +115,9 @@ def main(argv: list[str] | None = None) -> int:
     _configure_logging()
     secrets = take_secrets(os.environ)
     config_dir = Path(os.environ.get("NEWSLETTER_AGENT_CONFIG_DIR", "config"))
+
+    if args.command == "authorize-youtube":
+        return _authorize_youtube(args.client_file, args.env_file)
 
     if args.command == "notify-failure":
         try:
@@ -144,6 +157,40 @@ def main(argv: list[str] | None = None) -> int:
         args.since,
         settings.max_items_per_run if args.limit is None else args.limit,
     )
+
+
+def _authorize_youtube(client_file: Path, env_file: Path) -> int:
+    from newsletter_agent import http, youtube_auth
+
+    try:
+        client = youtube_auth.load_client(client_file)
+        print("Opening Google's sign-in in your browser; waiting up to 10 minutes.")
+        refresh_token = youtube_auth.authorize(client)
+    except (OSError, ValueError, RuntimeError, http.FetchError) as e:
+        print(f"Sign-in failed: {type(e).__name__}: {e}")
+        return 1
+    values = {
+        "YOUTUBE_OAUTH_CLIENT_ID": client.client_id,
+        "YOUTUBE_OAUTH_CLIENT_SECRET": client.client_secret,
+        "YOUTUBE_OAUTH_REFRESH_TOKEN": refresh_token,
+    }
+    _save_env(env_file, values)
+    print(f"Saved {', '.join(values)} to {env_file}; the values aren't shown.")
+    return 0
+
+
+def _save_env(path: Path, values: dict[str, str]) -> None:
+    """Set the variables in an env file, replacing their earlier lines, and keep the file
+    readable by its owner only.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    kept = [line for line in lines if line.split("=", 1)[0].strip() not in values]
+    kept += [f"{name}={value}" for name, value in values.items()]
+    staged = path.with_name(path.name + ".new")
+    staged.touch(mode=0o600)
+    staged.chmod(0o600)
+    staged.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    staged.replace(path)
 
 
 @contextmanager
@@ -194,9 +241,40 @@ def _backfill(settings: Settings, newsletter_key: str, source: str, since: date,
     return 0
 
 
+def _check_youtube_key(settings: Settings, report: Callable[[str, bool, str], None]) -> None:
+    from newsletter_agent.sources import youtube_search
+
+    if settings.youtube_api_key is None:
+        report("youtube", True, "no API key set and no youtube_search source")
+        return
+    try:
+        youtube_search.check_key(settings.youtube_api_key)
+        report("youtube", True, "the API key works")
+    except Exception as e:
+        report("youtube", False, f"{type(e).__name__}: {e}")
+
+
+def _check_likes(settings: Settings, report: Callable[[str, bool, str], None]) -> None:
+    from newsletter_agent import http, steps, youtube_auth
+    from newsletter_agent.sources import youtube_likes
+
+    account = settings.youtube_account
+    if account is None:
+        report("likes", True, "no youtube_likes source")
+        return
+    try:
+        client = youtube_auth.Client(account.client_id, account.client_secret)
+        token = youtube_auth.access_token(client, account.refresh_token)
+        since = datetime.now(UTC) - timedelta(days=steps.LIKES_DAYS)
+        likes = youtube_likes.recent(token, since, deadline=float("inf"))
+        report("likes", True, f"signed in; {len(likes)} likes in the last {steps.LIKES_DAYS} days")
+    except (http.FetchError, ValueError) as e:
+        report("likes", False, f"{type(e).__name__}: {e}")
+
+
 def _check(settings: Settings, skip: set[str]) -> int:
     from newsletter_agent import llm, steps, store
-    from newsletter_agent.sources import web_search, youtube_search
+    from newsletter_agent.sources import web_search
 
     failures = 0
 
@@ -262,14 +340,9 @@ def _check(settings: Settings, skip: set[str]) -> int:
             except Exception as e:
                 report("imap", False, f"{type(e).__name__}: {e}")
     if "youtube" not in skip:
-        if settings.youtube_api_key is None:
-            report("youtube", True, "no API key set and no youtube_search source")
-        else:
-            try:
-                youtube_search.check_key(settings.youtube_api_key)
-                report("youtube", True, "the API key works")
-            except Exception as e:
-                report("youtube", False, f"{type(e).__name__}: {e}")
+        _check_youtube_key(settings, report)
+    if "likes" not in skip:
+        _check_likes(settings, report)
     if "claude" not in skip:
         for model in sorted({settings.score_model, settings.digest_model}):
             try:

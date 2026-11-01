@@ -91,6 +91,7 @@ def _run(settings: Settings) -> int:
             )
             steps.read_ratings(conn, settings, current)
             steps.collect(conn, settings, current)
+            steps.read_likes(conn, settings, current)
             steps.expire(conn, current)
             steps.triage(conn, settings, current)
             steps.enrich(conn, settings, current)

@@ -201,6 +201,33 @@ def get(
         return _follow(url, current, request_headers, base_headers)
 
 
+def post_form(url: str, form: dict[str, str]) -> Response:
+    """POST form fields over https, with the same address checks, pinned connection, socket
+    timeout, 90 s deadline and size cap as get. A redirect is an error, so the fields are never
+    sent on to another address. Raises FetchError on any non-2xx status or network error.
+    """
+    target = https(url)
+    headers = {"User-Agent": USER_AGENT, "Content-Type": "application/x-www-form-urlencoded"}
+    with deadline(
+        REQUEST_DEADLINE, f"no complete response within {REQUEST_DEADLINE} s from {describe(url)}"
+    ):
+        opener = urllib.request.build_opener(
+            urllib.request.ProxyHandler({}), _NoRedirect, _PinnedHTTPSHandler(check_url(target))
+        )
+        request = urllib.request.Request(
+            target, data=urlencode(form).encode(), headers=headers, method="POST"
+        )
+        try:
+            with opener.open(request, timeout=SOCKET_TIMEOUT) as response:
+                body = _read_capped(response, target)
+                return Response(response.geturl(), response.status, response.headers, body)
+        except urllib.error.HTTPError as e:
+            with e:
+                raise FetchError(f"HTTP {e.code} from {describe(target)}") from None
+        except (urllib.error.URLError, http.client.HTTPException, OSError, ValueError) as e:
+            raise FetchError(f"{type(e).__name__} posting to {describe(target)}: {e}") from None
+
+
 def _follow(
     url: str,
     current: str,

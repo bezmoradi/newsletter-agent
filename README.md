@@ -32,6 +32,7 @@ A personal agent that runs once a day in Docker. It runs one or more **newslette
 - [Running it](#running-it)
 - [Maintenance](#maintenance)
 - [Development](#development)
+- [Privacy](#privacy)
 - [Author](#author)
 - [License](#license)
 
@@ -41,6 +42,7 @@ A personal agent that runs once a day in Docker. It runs one or more **newslette
 - A Claude subscription token from `claude setup-token`. It is valid for one year.
 - A Gmail app password, made as below. A free Gmail account works.
 - A YouTube Data API key, made as below, if a newsletter has a `youtube_search` source.
+- Optionally, a Google sign-in that lets the agent read your YouTube likes, made as below, if your newsletter has a `youtube_likes` source.
 
 ### Gmail app password
 
@@ -66,6 +68,26 @@ YouTube topic search needs a key for the YouTube Data API v3. Google allows 100 
 
 `check` then reports `ok youtube: the API key works`.
 
+### YouTube likes (optional)
+
+A `youtube_likes` source makes the videos you like on YouTube count as "More like this" ratings, beside the ratings you send from your digests ([Rating items](#running-it)). Reading your likes needs your permission through a Google sign-in, which an API key can't give. Use the Google Cloud project of your API key, with the YouTube Data API enabled, and your own Gmail account.
+
+1. **Consent screen.** Open **Google Auth Platform** at https://console.cloud.google.com/auth/overview and click **Get started**. Name the app, such as `newsletter-agent`, pick your email as the support email, choose **External** as the audience, enter your email as the contact, agree to the policy and click **Create**.
+2. **Branding.** Under **Branding**, set **Application home page** and **Application privacy policy link**, add their domain under **Authorized domains**, and click **Save**. Google won't publish the app without them. This repository's home page and its [Privacy](#privacy) section work: `https://github.com/bezmoradi/newsletter-agent`, `https://github.com/bezmoradi/newsletter-agent#privacy` and `github.com`.
+3. **Scope.** Under **Data Access**, click **Add or remove scopes**, tick `.../auth/youtube.readonly` ("View your YouTube account"), click **Update**, then **Save**. Leave the justification and demo video empty; they're for Google's verification, which a personal app doesn't need.
+4. **Publish.** Under **Audience**, click **Publish app** and **Confirm**, so it reads **In production**. While an app is in **Testing**, Google lets only listed test users sign in, and its sign-ins expire after 7 days, which would stop the daily run within a week ([Google's rule](https://developers.google.com/identity/protocols/oauth2#expiration)).
+5. **Client.** Under **Clients**, click **Create client**, choose **Desktop app**, name it and click **Create**. Leave **Use this client for an AI-powered agent** unticked: the agent's own code reads your likes, and Claude never sees the sign-in. Download its JSON file and keep it outside the repository.
+6. **Sign in once,** on a machine with a browser, from the repository:
+
+   ```bash
+   uv run python -m newsletter_agent authorize-youtube --client-file <path to the client's JSON> --env-file <path to your agent.env>
+   ```
+
+   Your browser opens Google's sign-in. Choose your account; Google warns that it "hasn't verified this app", because it's your own unreviewed app, so click **Advanced**, then **Go to newsletter-agent**, and **Allow**. The command waits up to 10 minutes for Google's answer on `127.0.0.1`, then saves `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET` and `YOUTUBE_OAUTH_REFRESH_TOKEN` in the env file without showing them. Copy the three lines to the server's `agent.env`.
+7. Add the source to your newsletter's `newsletter.toml`, as the `ai` newsletter does.
+
+`check` then reports `ok likes: signed in; <n> likes in the last 30 days`. The sign-in lasts until you remove the app's access at https://myaccount.google.com/permissions, or the agent doesn't use it for six months; then run step 6 again.
+
 ## Configuration
 
 Each newsletter is a folder under `config/newsletters/`. The folder's name is the newsletter's key: lowercase letters, digits and dashes, such as `ai` or `cooking`. Each folder holds two files.
@@ -88,6 +110,7 @@ Each source has:
 | `sitemap` | `url` of a sitemap, and `include`, a list of regular expressions for the URL paths to keep |
 | `youtube` | `channel_id`. The channel's Shorts are skipped |
 | `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. Videos of 3 minutes or less, every Short among them, are skipped. |
+| `youtube_likes` | None. Your likes on YouTube from the last 30 days become "More like this" ratings, once Claude's quick title check scores them at or above the newsletter's threshold; a title mostly in a non-Latin script is left out. The liked videos are never sent in a digest, since you've seen them. Allowed only in a newsletter sent to `SMTP_USERNAME`, at most one per newsletter, and only with the sign-in of [YouTube likes](#youtube-likes-optional) |
 | `web_search` | `queries`, the search terms. Claude searches the web for each term with its `WebSearch` tool, its only tool, and returns recent links; no other key is needed. All newsletters' terms together can't exceed `WEB_SEARCH_MAX_QUERIES`, because every search uses your Claude plan. |
 
 Only `feed` and `sitemap` sources take `include`; on any other type the configuration is refused. Add `enabled = false` to an entry to skip it. The first time a source is seen, its existing entries are stored as a baseline and not scored. The exceptions are feed items published within the last `BACKFILL_DAYS`, and web search results, which are always recent.
@@ -113,6 +136,7 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `SMTP_APP_PASSWORD` | required | The Gmail app password, without the spaces; see [Gmail app password](#gmail-app-password) |
 | `DIGEST_TO_<KEY>` | `SMTP_USERNAME` | Where newsletter `<key>`'s digest goes |
 | `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key; see [YouTube Data API key](#youtube-data-api-key) |
+| `YOUTUBE_OAUTH_CLIENT_ID`, `YOUTUBE_OAUTH_CLIENT_SECRET`, `YOUTUBE_OAUTH_REFRESH_TOKEN` | required with a `youtube_likes` source | The sign-in that reads your YouTube likes, saved by `authorize-youtube`; see [YouTube likes](#youtube-likes-optional). Set all three or none |
 | `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search. Every Claude call runs at high effort |
 | `SCORE_THRESHOLD` | `6` | The lowest score, out of 10, that goes in a digest, unless a newsletter sets its own |
 | `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's most promising first, by a quick score of its title, then newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting. Items still waiting after 7 days are dropped from the queue; `backfill` can queue them again |
@@ -291,13 +315,14 @@ Run these from the repository folder, with `NEWSLETTER_AGENT_ENV_DIR` set as in 
 - It exits 1 when it failed and couldn't send one, or when it was still running 15 minutes past `RUN_DEADLINE_MINUTES` and stopped itself. On a Linux server, systemd then starts `newsletter-agent-failure.service`, which tries again; elsewhere, the command of [Run it with Docker](#run-it-with-docker), step 5, does.
 
 **Rating items.** Under each item in your own digests are two links, "More like this" and "Less like this", and each item in the list below your threshold has a small "More like this" link. Tapping one opens an email to yourself with a subject such as `newsletter-agent feedback more 1234`, where 1234 is the item's number; send it as it is. The next run reads it from your Sent folder and stores the rating:
-- Scoring and the digest then show Claude up to 5 of your likes and 5 dislikes from the last 180 days, at most 2 of each from one source, as examples that refine the newsletter's `interests.md`. The profile still decides what's in scope, and a dislike counts against that item, not its whole topic.
+- Scoring and the digest then show Claude up to 5 of your likes and 5 dislikes from the last 180 days, at most 2 of each from one source, or from one website or YouTube channel of a search source, as examples that refine the newsletter's `interests.md`. Each rating comes with what the item was about: the summary your digest showed, or else the reason for its score. The profile still decides what's in scope, and a dislike counts against that item, not its whole topic.
+- With a `youtube_likes` source, each video you like on YouTube that passes the title check is stored the same way, as a "More like this" rating, and shares the same limits, newest first. Its line shows the video's description, or the summary or score reason when a digest showed it.
 - Your footer counts your ratings by source, which helps decide which sources to keep. If ratings couldn't be read, the footer says why, and the run still goes on.
 - Once at least 20 new ratings exist, and at most once every 30 days, you get an email with Claude's suggested edits to `interests.md`. Nothing changes until you edit the file in the repository and deploy it.
 - Rating an item again replaces the earlier rating. Deleting the email after the run doesn't undo a rating.
 - A digest for anyone else has no links.
 
-**What's in your digest.** Claude scores each item on its whole article or video transcript, and picks the day's set from the best 30 candidates, at most 3 from one source, leaving out stories that repeat another item or one sent in the last 7 days. Each item then gets a summary Claude writes from its whole text, meant to save you opening the link: a "Highlights:" line right under the title saying what stands out and what the original adds, so you can decide whether to read on or open it, then a sentence or two on what it is and the main takeaways with their numbers, names and methods. A second Claude call checks the summary against the source, and a third corrects it when the check finds a problem. That takes three calls per item, so it uses more of your plan than shorter summaries would. An item Claude couldn't summarize shows the reason it was picked, with a note saying so. Your own digests end with a list titled "Scored below your threshold": every item scored in the last 7 days that didn't reach your threshold, by title, source and score, each listed once, except items scored 0, which are unrelated or out of scope. Its "More like this" link teaches scoring what you'd have wanted; it doesn't bring the item back.
+**What's in your digest.** Claude scores each item on its whole article or video transcript, and picks the day's set from the best 30 candidates, at most 3 from one source, or from one website or YouTube channel of a search source, leaving out stories that repeat another item or one sent in the last 7 days. A candidate left out only because the 30 places or its source's 3 were taken stays a candidate for 3 days after its score. A title written mostly in a non-Latin script, such as Chinese, Japanese, Korean, Cyrillic or Devanagari, is skipped when collected, so it is never fetched or scored. Each item then gets a summary Claude writes from its whole text, meant to save you opening the link: a "Highlights:" line right under the title saying what stands out and what the original adds, so you can decide whether to read on or open it, then a sentence or two on what it is and the main takeaways with their numbers, names and methods. A second Claude call checks the summary against the source, and a third corrects it when the check finds a problem. That takes three calls per item, so it uses more of your plan than shorter summaries would. An item Claude couldn't summarize shows the reason it was picked, with a note saying so. Your own digests end with a list titled "Scored below your threshold": every item scored in the last 7 days that didn't reach your threshold, by title, source and score, each listed once, except items scored 0, which are unrelated or out of scope. Its "More like this" link teaches scoring what you'd have wanted; it doesn't bring the item back.
 
 **Keep rating emails out of your Inbox.** Each rating email also lands in your Inbox. Don't delete it there before the next run: Gmail moves it to Trash, it leaves the Sent folder, and the rating is lost. A Gmail filter can archive rating emails as they arrive, so they stay in Sent and never show in your Inbox. Create it once, in Gmail in a browser, because the Gmail apps can't create filters:
 
@@ -378,6 +403,17 @@ docker compose -p newsletter-agent-local run --rm -T agent run
 Keep the default models, Opus at high effort, so its scores match what your deployed agent sends. Set `MAX_ITEMS_PER_RUN` to about 12 to limit plan usage.
 
 A local database reads the same Sent folder as your deployed agent's. A rating email names only an item's number, so a rating you send from a local digest can be stored by the deployed agent against an unrelated item with the same number, if one of its digests included that item. Delete such rows from the deployed database's `feedback` table by hand, by item number and time.
+
+## Privacy
+
+Newsletter agent runs on your own machine. Its author runs no server for it and receives none of your data.
+
+- **What it reads:** the sources you configure; the rating emails in your Gmail Sent folder, read-only, headers only; and, if you connect your YouTube account, the list of videos you liked, read-only, with Google's `youtube.readonly` permission.
+- **Where it keeps data:** in the Postgres database on your machine: the items it collected, their text, Claude's scores and summaries, the digests and your ratings. Your keys and passwords stay in the secrets file you create. Nothing is copied elsewhere, and nothing is backed up unless you back it up.
+- **Who else sees it:** Anthropic, through your own Claude subscription, receives the items' text, your interest profile and your ratings, to score and summarize them; Claude Code's usage metrics and error reports are turned off. Google handles the email it sends and reads, and the YouTube calls. Your digests go only to the addresses you set.
+- **Stopping it:** remove the agent's access to your Google account at [Google Account permissions](https://myaccount.google.com/permissions), delete the Gmail app password, and delete the database volume and the secrets file to remove everything it stored.
+
+Questions go to the repository's [issues](https://github.com/bezmoradi/newsletter-agent/issues).
 
 ## Author
 

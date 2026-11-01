@@ -17,8 +17,9 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Candidate:
-    """One item a collector found. search_terms holds every search term that found it, for the
-    search sources.
+    """One item a collector found. For the search sources, whose items come from many publishers,
+    search_terms holds every search term that found it, and publisher the website or YouTube
+    channel that published it.
     """
 
     external_id: str
@@ -27,6 +28,7 @@ class Candidate:
     published_at: datetime | None = None
     summary: str | None = None
     search_terms: tuple[str, ...] = ()
+    publisher: str | None = None
 
 
 @dataclass(frozen=True)

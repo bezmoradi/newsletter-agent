@@ -13,7 +13,7 @@ from newsletter_agent import http
 from newsletter_agent.sources.base import Candidate, Collected, DeadlinePassed, SourceState, past
 from newsletter_agent.sources.feed import parse_date
 from newsletter_agent.text import plain
-from newsletter_agent.urls import is_video_id, watch_url
+from newsletter_agent.urls import is_channel_id, is_video_id, watch_url
 
 if TYPE_CHECKING:
     from newsletter_agent.settings import Settings, SourceConfig
@@ -71,6 +71,7 @@ def collect(
             if video_id in found:
                 found[video_id] = _found_by(found[video_id], query)
                 continue
+            channel_id = snippet.get("channelId")
             found[video_id] = Candidate(
                 external_id=video_id,
                 url=watch_url(video_id),
@@ -78,6 +79,7 @@ def collect(
                 published_at=parse_date(snippet.get("publishedAt")),
                 summary=plain(snippet.get("description")),
                 search_terms=(query,),
+                publisher=channel_id if is_channel_id(channel_id) else None,
             )
     longer = _longer_than_short(list(found), settings.youtube_api_key, deadline)
     if len(longer) < len(found):

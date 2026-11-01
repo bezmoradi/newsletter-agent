@@ -1,4 +1,4 @@
-"""URL helpers: canonical URLs for deduplication and YouTube video IDs."""
+"""URL helpers: canonical URLs for deduplication, and YouTube video and channel IDs."""
 
 from __future__ import annotations
 
@@ -8,11 +8,16 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _YOUTUBE_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com"})
 _VIDEO_ID = re.compile(r"[A-Za-z0-9_-]{11}")
+_CHANNEL_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
 MAX_URL_LENGTH = 2000
 
 
 def is_video_id(value: object) -> TypeGuard[str]:
     return isinstance(value, str) and _VIDEO_ID.fullmatch(value) is not None
+
+
+def is_channel_id(value: object) -> TypeGuard[str]:
+    return isinstance(value, str) and _CHANNEL_ID.fullmatch(value) is not None
 
 
 def watch_url(video_id: str) -> str:
