@@ -12,7 +12,7 @@ from typing import Any
 
 from newsletter_agent import enrich as enrich_mod
 from newsletter_agent import llm, mail, prompts, store
-from newsletter_agent.settings import NewsletterConfig, Settings, SourceConfig
+from newsletter_agent.settings import MAX_WAIT_DAYS, NewsletterConfig, Settings, SourceConfig
 from newsletter_agent.sources import COLLECTORS
 from newsletter_agent.sources.base import Collected, DeadlinePassed, SourceState
 from newsletter_agent.text import fence
@@ -42,7 +42,6 @@ SCORE_BATCH_CHARS = 200_000
 MAX_TAKEAWAYS = 4
 MAX_MISSING = 3
 MAX_ASSESS_ATTEMPTS = 3
-MAX_WAIT_DAYS = 7
 DIGEST_SOURCE_CAP = 3
 DIGEST_POOL = 30
 SENT_TITLE_DAYS = 7

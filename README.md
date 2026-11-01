@@ -118,7 +118,7 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's most promising first, by a quick score of its title, then newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting. Items still waiting after 7 days are dropped from the queue; `backfill` can queue them again |
 | `DIGEST_MAX_ITEMS` | `8` | The most items in one email. No source fills more than 3 of them |
 | `SCORE_BATCH_SIZE` | `20` | The most items per scoring call. A call also holds at most 200,000 characters of text, and a longer item gets a call of its own |
-| `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new |
+| `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new. It can be at most 7, because items still waiting after 7 days are dropped from the queue |
 | `YOUTUBE_SEARCH_MAX_QUERIES` | `10` | The most search terms across all newsletters, which is one search call each per run; the API allows 100 a day |
 | `WEB_SEARCH_MAX_QUERIES` | `10` | The most web search terms across all newsletters, at most 50. Each is one Claude session per run, with up to 3 searches |
 | `TRANSCRIPTS_ENABLED` | `true` | Set `false` to stop fetching YouTube transcripts |
