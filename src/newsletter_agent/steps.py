@@ -1133,6 +1133,7 @@ def _suggest_profile(
         result = llm.structured(prompt, PROFILE_SCHEMA, settings.digest_model)
     except llm.ClaudeOutputError as e:
         run.record_usage(*e.spent)
+        run.degraded = True
         log.warning("invalid profile suggestions", extra={"fields": {"error": str(e)}})
         return
     except (llm.ClaudeUnavailable, llm.ClaudeAuthError) as e:
