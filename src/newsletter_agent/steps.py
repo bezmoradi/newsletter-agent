@@ -57,6 +57,8 @@ DIGEST_POOL = 30
 SENT_TITLE_DAYS = 7
 BELOW_THRESHOLD_DAYS = 7
 YOUTUBE_TYPES = frozenset({"youtube", "youtube_search"})
+TRANSCRIPTS_PER_RUN = 20
+TRANSCRIPT_PAUSE_SECONDS = 60
 CLAUDE_SOURCE_TYPES = frozenset({"web_search"})
 MAX_OUTPUT_ERRORS = 4
 
@@ -207,6 +209,8 @@ class Run:
     source_errors: list[str] = field(default_factory=list)
     output_errors: int = 0
     degraded: bool = False
+    transcripts_refused: bool = False
+    last_transcript_at: float | None = None
 
     def past_deadline(self) -> bool:
         return time.monotonic() >= self.deadline
@@ -563,32 +567,84 @@ def _triage_titles(
 
 def enrich(conn: store.Connection, settings: Settings, run: Run) -> None:
     """Fetch article text or a transcript for up to MAX_ITEMS_PER_RUN new items in the whole run,
-    shared between newsletters; a failed fetch makes the item enrich_failed.
+    shared between newsletters; a failed fetch makes the item enrich_failed. Transcripts are
+    requested for at most TRANSCRIPTS_PER_RUN videos, those with the best title scores, at least
+    TRANSCRIPT_PAUSE_SECONDS apart, and for none after YouTube refuses one; a video skipped
+    either way is recorded as such and scored without its transcript.
     """
     used: list[int] = []
+    picked: set[int] = set()
     for newsletter in settings.newsletters:
         limit = shares(settings.max_items_per_run, len(settings.newsletters), used)
         keys = [s.key for s in newsletter.sources]
         rows = store.items_to_enrich(conn, newsletter.key, keys, limit) if limit else []
         used.append(len(rows))
+        picked |= _transcript_picks(rows, TRANSCRIPTS_PER_RUN - len(picked))
         for row in rows:
             if run.past_deadline():
                 run.degraded = True
                 return
-            _enrich_item(conn, settings, run, row)
+            _enrich_item(conn, settings, run, row, picked)
 
 
-def _enrich_item(conn: store.Connection, settings: Settings, run: Run, row: store.Row) -> None:
-    video_id = (
-        row["external_id"] if row["source_type"] in YOUTUBE_TYPES else youtube_video_id(row["url"])
+def _video_id(row: store.Row) -> str | None:
+    if row["source_type"] in YOUTUBE_TYPES:
+        return str(row["external_id"])
+    return youtube_video_id(row["url"])
+
+
+def _transcript_picks(rows: list[store.Row], budget: int) -> set[int]:
+    videos = [row for row in rows if _video_id(row)]
+    videos.sort(
+        key=lambda row: -1 if row["title_score"] is None else row["title_score"], reverse=True
     )
+    return {row["id"] for row in videos[: max(0, budget)]}
+
+
+def _transcript_skipped(run: Run, picked: bool) -> str | None:
+    if run.transcripts_refused:
+        return "YouTube refused an earlier transcript request in this run"
+    if not picked:
+        return f"only the {TRANSCRIPTS_PER_RUN} videos with the best title scores get a transcript"
+    return None
+
+
+def _transcript(run: Run, video_id: str) -> enrich_mod.Content:
+    if run.last_transcript_at is not None:
+        wait = run.last_transcript_at + TRANSCRIPT_PAUSE_SECONDS - time.monotonic()
+        time.sleep(max(0.0, min(wait, run.deadline - time.monotonic())))
+    run.last_transcript_at = time.monotonic()
+    run.counts["transcripts_requested"] += 1
+    try:
+        return enrich_mod.transcript(video_id)
+    except Exception as e:
+        if enrich_mod.refused(e):
+            run.transcripts_refused = True
+        raise
+
+
+def _enrich_item(
+    conn: store.Connection, settings: Settings, run: Run, row: store.Row, picked: set[int]
+) -> None:
+    video_id = _video_id(row)
+    skipped = (
+        _transcript_skipped(run, row["id"] in picked)
+        if video_id and settings.transcripts_enabled
+        else None
+    )
+    if skipped:
+        error = f"TranscriptSkipped: {skipped}"
+        store.save_content(conn, row["id"], kind="transcript", text=None, error=error, title=None)
+        run.counts["transcripts_skipped"] += 1
+        conn.commit()
+        return
     kind: str | None = "transcript" if video_id else "article"
     try:
         if video_id and not settings.transcripts_enabled:
             content = None
             kind = None
         elif video_id:
-            content = enrich_mod.transcript(video_id)
+            content = _transcript(run, video_id)
         else:
             content = enrich_mod.article(row["url"])
     except Exception as e:

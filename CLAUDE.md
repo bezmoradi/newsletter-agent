@@ -65,7 +65,7 @@ Each external boundary has one module:
 |---|---|---|
 | Claude | `llm.py` | The only module that imports `claude_agent_sdk` |
 | Postgres | `store.py` | The only module that imports `psycopg`; all SQL lives here. Other modules type connections as `store.Connection` |
-| HTTP | `http.py` | Every outgoing request goes through it, except YouTube transcripts, which `youtube-transcript-api` fetches with its own `requests` session, over IPv6 first, and a 30-second timeout |
+| HTTP | `http.py` | Every outgoing request goes through it, except YouTube transcripts, which `youtube-transcript-api` fetches with its own `requests` session, over IPv6 first, and a 30-second timeout; `steps.enrich` asks for at most 20 a run, a minute apart, and none after YouTube refuses one, because bursts got the home network blocked |
 | Gmail | `mail.py` | SMTP to send; IMAP only to read rating emails from the Sent folder: read-only (`EXAMINE`), headers only, the rating subject only. Pass `ssl.create_default_context()` to both, because `smtplib` and `imaplib` don't check certificates without it |
 
 The rest of the package:
