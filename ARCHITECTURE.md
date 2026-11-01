@@ -129,6 +129,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-93 | A candidate whose title is mostly in a non-Latin script, such as Chinese, Japanese, Korean, Cyrillic or Devanagari, is skipped when collected and not stored, so it is never fetched or scored; ratings of such items aren't shown to Claude. Adds to REQ-90 | Checked on the Mac against every title stored on the Pi (section 14) |
 | REQ-94 | Each rating shown to Claude says what the item was about: the gist the digest showed, or else the item's latest score reason, cut to 300 characters and fenced like the titles. Changes REQ-78 | Checked with one scoring call and on a local Postgres 18, on the Mac (section 14) |
 | REQ-95 | Your YouTube likes count as "More like this" ratings, in tandem with the rating emails, in scoring, the digest choice and the profile suggestions, with the same limits: a `youtube_likes` source, allowed only in a newsletter sent to you, reads your likes of the last 30 days through a Google sign-in that `authorize-youtube` makes once; a like counts once the title pass or a score puts its video at or above the threshold, a title mostly in a non-Latin script is left out, and a video you liked is never offered in a digest. From the review of the interest profile (issue #35) | Checked on the Mac with your account, against a local Postgres (section 14) |
+| REQ-96 | Database migrations are applied when a new version is deployed, by a `migrate` command that takes the run lock and prints what it applied, after a backup and before `check`; every run still applies anything pending first, as a safety net. From issue #37 | Checked on the Mac against a local Postgres 18 (section 14) |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
 
@@ -155,6 +156,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | Shape | A scheduled workflow, not a free-roaming agent (REQ-29) | The steps are known in advance. Anthropic: "we recommend finding the simplest solution possible, and only increasing complexity when needed" ([Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)). Claude with no tools can't be steered by injected page text to do anything; only the web search step gives it a tool |
 | Web search | Claude's own `WebSearch` tool, through your subscription (REQ-28, REQ-29) | Your product decision: no other search service, account or key. The cost is that injected text in search results reaches a Claude that has a tool (section 5). The alternatives were Brave's Search API, which Claude recommended ($5 of free credit a month, about 1,000 searches, with a card on file), and Tavily (1,000 free searches a month, no card). Google's whole-web Custom Search JSON API ends on 2027-01-01. Prices checked on 2026-10-30 |
 | Scheduling | A host systemd timer starting a one-shot container (REQ-19) | Matches the Pi's existing timer pattern; nothing runs between runs |
+| Migrations | Applied at deploy time by `migrate`, after a backup; each run still applies anything pending first (REQ-96) | Common practice applies migrations once per release, before the new code does any work, so a failure stops the release ([Twelve-Factor admin processes](https://12factor.net/admin-processes), [Heroku's release phase](https://devcenter.heroku.com/articles/release-phase)). Migrating when a run starts is acceptable for a single instance under a lock, which a run is, so it stays as a safety net for a deploy that skips the step |
 | Delivery | Gmail's own SMTP server, from your account (REQ-11, REQ-14) | No extra mail component |
 | A heartbeat email on quiet days | No (REQ-16) | Your choice. The cost: a dead Pi or a revoked Gmail password looks like a quiet day (section 10) |
 | Models | A setting per step, `claude-opus-5-5` for scoring, the digest and web search (REQ-12), every call at high effort (REQ-70) | Anthropic's advice is to try the most capable model first. Haiku 5.5 and Sonnet 5.5 also worked in E1. High effort is your starting point; `llm.EFFORT` changes it for every call |
@@ -310,8 +312,8 @@ newsletter-agent/
     newsletter.toml           its name, optional score_threshold and [[sources]]
     interests.md              its interest profile, in plain prose
   src/newsletter_agent/
-    cli.py                    argparse: run, send-pending, check, backfill, notify-failure,
-                              authorize-youtube
+    cli.py                    argparse: run, send-pending, migrate, check, backfill,
+                              notify-failure, authorize-youtube
     settings.py               take_secrets(), load_settings() → frozen Settings
     run.py                    lock, migrate, the steps in order, the runs row, exit code
     steps.py                  read_ratings, collect, read_likes, enrich, assess, digest, deliver
@@ -513,7 +515,7 @@ A failure to read ratings, such as a rejected sign-in, doesn't stop the run: it 
 - **Plain functions** that take a connection; there is no ORM.
 - **Connections:** `connect()` sets `connect_timeout=10` and `statement_timeout` to 60 seconds, and always uses `sslmode=verify-full`, whatever `DATABASE_URL` says, so the server's certificate and host name are checked.
 - **The lock:** `try_lock()` calls `pg_try_advisory_lock` on a connection of its own, which stays open for the whole run.
-- **Migrations:** `migrate()` applies the pending files in `newsletter_agent/migrations/`, each in its own transaction, and records them in `schema_migrations`.
+- **Migrations:** `migrate()` applies the pending files in `newsletter_agent/migrations/`, each in its own transaction, and records them in `schema_migrations`. The `migrate` command, `send-pending`, `backfill` and every run call it under the run lock (REQ-96).
 
 ## 8. Data model
 
@@ -759,7 +761,7 @@ flowchart LR
 
   The README shows how to install them with the project path filled in. `systemd-analyze verify` passed on the Pi on 2026-10-30, with `ExecStopPost=` and `time-sync.target` in the run unit and the project path filled in.
 - **Deploying** copies the latest reviewed commit on `main`, never the Mac's working tree (REQ-60): `git archive origin/main` into an emptied staging folder on the Pi, with the commit's hash in `REVISION`, then `rsync --delete --chown=root:root` into `/opt/newsletter-agent`, owned by root, so files removed in the repository are removed on the Pi. The units run as root from `/opt`, so they use no file the login account can change. The image is built with `REVISION`, so every run can say which commit it is. `config/` is edited in the repository and deployed, never edited on the Pi, so it has one writer.
-- **Migrations** run at the start of every run, under the lock, so new code never meets an old schema.
+- **Migrations** are applied at deploy time by `migrate`, after a backup (REQ-96), so one that fails stops the deploy while you're watching. It leaves the database as it was, because each migration runs in its own transaction. Every run still applies anything pending first, under the lock, so new code never meets an old schema. A migration stays additive, such as a new column that may be empty, so the previous image still works against the new schema if a deploy has to be undone.
 - **Logs** are JSON lines on stderr. They land in the systemd journal, which is persistent on the Pi, and the counts and Claude usage also go into the `runs` table.
 
 **The pipeline** runs on GitHub Actions, on `ubuntu-24.04` runners. Each job has read-only permissions and runs nothing from the internet that isn't pinned:
@@ -1105,6 +1107,14 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
 
   The new profile didn't lower the share at 6 or more, scored likes lower against the other items, and left the dislike at 9; it raised only the two items it names as examples. By the review's own rule, take an edit only when the ordering improves by more than the gap between two runs of the same profile, it wasn't adopted, and the profile keeps its single list of topics. Caveats: the YouTube items had no transcript, so they were scored on their titles, and a set labelled by you, the review's P3, would measure this better.
 - **YouTube blocks the Mac's IPv6 too, 2026-11-01, afternoon.** In the same test every transcript came back `IpBlocked` over IPv6, which had worked that morning (REQ-91): YouTube now refuses the Mac's IPv6 address, after a day of test requests from it, as it did the home IPv4 address on 2026-10-30. The server's third run, that morning, fetched its transcripts over IPv6. If YouTube blocks the home network's whole IPv6 range, the server's videos will again go without summaries; the digest's footer and the run's `enrich_failed` count will show it.
+- **`migrate` at deploy time (REQ-96, issue #37), on the Mac without Docker, 2026-11-01.** Against a throwaway Postgres 18 from Homebrew, listening on 127.0.0.1 with TLS 1.3, whose migrations 0001 to 0006 the code at 8470dd4 had applied:
+  - `migrate` printed `applied migrations: 0007_publishers`, exited 0, and `items.publisher` existed;
+  - run again, it printed `no pending migrations` and exited 0;
+  - while another session held the run lock, it printed `a run is in progress; try again when it ends` and exited 1;
+  - with the database unreachable, it exited 1;
+  - `check` then reported `0 pending migration(s)`.
+
+  The backup step's `pg_dump -Fc` through `docker compose exec` is how the Pi's database was backed up before f3c6ace was deployed.
 
 Not verified yet:
 
@@ -1188,7 +1198,7 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 - **Web search (REQ-29, accepted).** Search results reach a Claude that has a tool. Section 5 lists what injected text could do. The results' quality depends on Claude's search tool and the prompt; aggregator and release-stub pages got through in testing and were scored low. If `WebSearch` changes, for example by gaining page fetching, the tool check stops the run until the code is reviewed. Controls: `WebSearch` is the only tool, checked fail-closed; Claude's links pass the address checks before they're stored and again when fetched; everything shown is defanged, and email links come only from stored URLs. Review: 2027-10-30, and before every `claude-agent-sdk` upgrade. Follow-up: repeat the injection test of section 14 at each upgrade.
 - **Merging depends on Claude review (REQ-49, REQ-50).** Claude review is a required check, so nothing merges while Claude has findings or can't sign in because the `CLAUDE_CODE_OAUTH_TOKEN` secret is missing or expired. The check fails when Claude lists any blocking problem, and also when any inline comment was posted during the review, so a miscount can't pass a pull request. Since every problem blocks (REQ-64), a review can find something new on each push; your `review-override` label is the only way past it, and the way out of such a loop. It hasn't yet passed on GitHub with its own prompt; watch this pull request and the next ordinary one. Every review draws on your plan's limits.
 - **The repository is public (REQ-50).** Anyone can read the code and these documents, and open issues and pull requests. Keep personal details, the Pi's network and access details, and secrets out of every commit, issue and comment: history is permanent, and GitHub keeps every pull request's commits even after its branch is deleted. Workflows on a stranger's pull request wait for your approval and get no secrets, and `claude.yml` answers only you.
-- **No backups.** Dropping data, by a migration or `docker compose down -v`, can't be undone.
+- **No automatic backups.** Dropping data, by a migration or `docker compose down -v`, can't be undone without a backup. The README's deploy step takes a `pg_dump` before `migrate`; nothing else backs the data up.
 - **Logs stay on the Pi (REQ-30, accepted; security review SEC-6).** If the Pi is lost or compromised, its logs go with it. Failure emails are the only record that leaves it. Reason: there is no backup destination or log service to send them to, and adding one would mean a new account and secret for a one-person agent. Controls: logs carry no secrets and no query strings (`http.describe`), and only root can read the journal and the database. Review: 2027-10-30. Follow-up: send logs off the Pi once a backup destination exists (section 18).
 
 **Housekeeping rules:**
