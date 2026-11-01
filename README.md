@@ -186,10 +186,11 @@ The agent runs in Docker on any machine that runs Linux containers: Docker Deskt
    export NEWSLETTER_AGENT_ENV_DIR="$HOME/.config/newsletter-agent"
    REVISION="$(git rev-parse HEAD)" docker compose build agent
    docker compose up -d db
+   docker compose run --rm -T agent migrate
    docker compose run --rm -T agent check
    ```
 
-   `NEWSLETTER_AGENT_ENV_DIR` tells Compose where the settings folder is, so set it in every terminal you run the agent from; without it, Compose looks in `/etc/newsletter-agent`. Every line of `check` should start with `ok`, and the first one names the commit you built. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
+   `migrate` creates the database's tables, or after an update applies the new version's migrations, and prints what it applied. To update later, `git pull` and repeat this step. `NEWSLETTER_AGENT_ENV_DIR` tells Compose where the settings folder is, so set it in every terminal you run the agent from; without it, Compose looks in `/etc/newsletter-agent`. Every line of `check` should start with `ok`, and the first one names the commit you built. The Claude check makes one small call per model, and the web search check one search session; each line lists the tools the session offered. `--skip websearch` leaves the search out. The `imap` check signs in to Gmail over IMAP with the same app password, reads your Sent folder read-only, and counts your ratings from the last 30 days. Build `agent` by name: it sits under a Compose profile, so a plain `docker compose build` skips it and the old image keeps running.
 
 4. **Run it once:**
 
@@ -250,16 +251,25 @@ On a Linux server with systemd, Docker Engine and the Compose plugin, these step
 
    The key stays readable by root only: the `db` container copies it, as root, to a private file of its own each time it starts.
 
-3. **Build the image, start Postgres, and check everything:**
+3. **Build the image, start Postgres, update the database, and check everything.** When you deploy a new version over a database that already holds data, back it up first: nothing else does, and a migration can't be undone.
+
+   ```bash
+   cd /opt/newsletter-agent
+   sudo install -d -m 700 /var/backups/newsletter-agent
+   sudo sh -c 'umask 077 && docker compose exec -T db pg_dump -U newsletter_agent -d newsletter_agent -Fc > /var/backups/newsletter-agent/$(date +%Y%m%d-%H%M%S).dump'
+   ```
+
+   Then:
 
    ```bash
    cd /opt/newsletter-agent
    sudo env REVISION="$(cat REVISION)" docker compose build agent
    sudo docker compose up -d db
+   sudo docker compose run --rm -T agent migrate
    sudo docker compose run --rm -T agent check
    ```
 
-   Every line should start with `ok`, and the first one names the revision you copied. [Run it with Docker](#run-it-with-docker), step 3, says what the checks do.
+   `migrate` applies the migrations the new version brings and prints them, or `no pending migrations`. Each one commits on its own, so one that fails is rolled back and the deploy stops there; any applied before it stay applied. Runs apply anything still pending first, so a deploy that skips `migrate` still works; the migration then happens at the next run, unwatched. Every line of `check` should start with `ok`, the first one naming the revision you copied, and the `db` line should report 0 pending migrations. [Run it with Docker](#run-it-with-docker), step 3, says what the checks do.
 
 4. **Install the systemd units:**
 
@@ -305,6 +315,7 @@ Run these from the repository folder, with `NEWSLETTER_AGENT_ENV_DIR` set as in 
 | Read today's log | On a Linux server, `sudo journalctl -u newsletter-agent --since today`; elsewhere, wherever your scheduler keeps the command's output |
 | See recent runs | `docker compose exec db psql -U newsletter_agent -c "select id, started_at, status, error from runs order by id desc limit 5"` |
 | Resend digests that failed to send | `docker compose run --rm -T agent send-pending` |
+| Apply database migrations now, as every deploy does | `docker compose run --rm -T agent migrate` |
 | Score older entries of one source | `docker compose run --rm -T agent backfill --newsletter ai --source anthropic --since 2026-10-01` |
 | Pause the daily run | On a Linux server, `sudo systemctl disable --now newsletter-agent.timer`; elsewhere, turn off your scheduler's task |
 
@@ -358,7 +369,7 @@ Run the commands below as in [Running it](#running-it).
 - **After changing your Google password,** create a new app password at https://myaccount.google.com/apppasswords and replace `SMTP_APP_PASSWORD`. Google revokes app passwords when the password changes.
 - **Edit sources, search terms or interests** in `config/newsletters/` in the repository. On a Linux server, edit them on your computer and deploy again (step 1); don't edit them on the server, because the next deploy would overwrite the change. The folder is mounted into the container, so the next run uses it without a rebuild. Changing a source's type, URL, channel or include rules makes its next collection start again from a baseline, so old entries aren't scored as new.
 - **Turn transcripts off** with `TRANSCRIPTS_ENABLED=false` if YouTube blocks your machine's address. Each blocked video shows `IpBlocked` in `item_content.error`, and videos are scored on their title and description either way. YouTube blocked transcript requests from a home network on 2026-10-30, after about two dozen test requests that day, and on 2026-11-01 it blocked that network's shared IPv4 address but not its IPv6 addresses. The agent asks for transcripts over IPv6 first, and Compose gives its network IPv6, so a machine with working IPv6 gets around such a block; without IPv6, the agent waits 5 seconds once per run and then uses the normal connection.
-- **Never edit a migration file that a database has already applied.** Add a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there, such as `<next number>_add_column.sql`; the next run applies it.
+- **Never edit a migration file that a database has already applied.** Add a new file in `src/newsletter_agent/migrations/`, numbered one more than the highest number there, such as `<next number>_add_column.sql`; `migrate` applies it when you deploy, or the next run does if you didn't. Keep it additive, such as a new column that may be empty, so the previous version still works if you have to go back to it; dropping a column destroys its data.
 - **Change a database password** when you want to, or if `db.env` was ever exposed. Run `docker compose exec db psql -U postgres -c '\password newsletter_agent'` (or `'\password postgres'` for the admin account), and enter a new value from `openssl rand -hex 24` at the prompt. Then put it in `db.env`, and for the agent's account in `DATABASE_URL` in `agent.env`; on a Linux server, with `sudoedit`.
 - **Replace the database certificate** before it expires, 10 years after you made it, or if its key was ever exposed: make a new pair with the `openssl` commands of step 2 of [Run it with Docker](#run-it-with-docker), or of [Deploy on a Linux server](#deploy-on-a-linux-server) on a server, then run `docker compose up -d --force-recreate db`. The agent reads the new certificate on its next run.
 - **Before upgrading `claude-agent-sdk`,** rebuild and run `check` with the real token, then again with an invalid one. The invalid run must report `ClaudeAuthError`. A new SDK version may change how the OAuth token is read.

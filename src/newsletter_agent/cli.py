@@ -1,4 +1,5 @@
-"""Command-line entry point: run, send-pending, check, backfill and notify-failure.
+"""Command-line entry point: run, send-pending, migrate, check, backfill, notify-failure and
+authorize-youtube.
 
 notify-failure needs only the settings and mail modules, so the other commands import the rest
 when they run: a fault that breaks importing the run can't also stop the failure email.
@@ -75,6 +76,7 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("run", help="collect, score, write and email the digests")
     sub.add_parser("send-pending", help="email digests that failed to send earlier")
+    sub.add_parser("migrate", help="apply pending database migrations now, as part of a deploy")
     check = sub.add_parser("check", help="test the configuration and every connection")
     check.add_argument(
         "--skip", action="append", choices=CHECKS, default=[], help="skip one check; repeatable"
@@ -148,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
         return run_mod.run(settings)
     if args.command == "send-pending":
         return _send_pending(settings)
+    if args.command == "migrate":
+        return _migrate(settings)
     if args.command == "check":
         return _check(settings, set(args.skip))
     return _backfill(
@@ -195,8 +199,8 @@ def _save_env(path: Path, values: dict[str, str]) -> None:
 
 @contextmanager
 def _maintenance(settings: Settings) -> Iterator[store.Connection | None]:
-    """The run lock and a migrated database for a command run by hand; None, after saying so,
-    while a run holds the lock.
+    """The run lock and a migrated database for a command run by hand, after printing the
+    migrations it applied; None, after saying so, while a run holds the lock.
     """
     from newsletter_agent import store
 
@@ -205,8 +209,15 @@ def _maintenance(settings: Settings) -> Iterator[store.Connection | None]:
             print("a run is in progress; try again when it ends")
             yield None
             return
-        store.migrate(conn)
+        applied = store.migrate(conn)
+        print(f"applied migrations: {', '.join(applied)}" if applied else "no pending migrations")
         yield conn
+
+
+def _migrate(settings: Settings) -> int:
+    with _maintenance(settings) as conn:
+        held = conn is not None
+    return 0 if held else 1
 
 
 def _send_pending(settings: Settings) -> int:
