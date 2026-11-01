@@ -89,6 +89,8 @@ services:
         max-file: "3"
 
 networks:
+  default:
+    enable_ipv6: true
   backend:
     internal: true
 
