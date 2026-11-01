@@ -17,11 +17,16 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class Candidate:
+    """One item a collector found. search_terms holds every search term that found it, for the
+    search sources.
+    """
+
     external_id: str
     url: str
     title: str | None = None
     published_at: datetime | None = None
     summary: str | None = None
+    search_terms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

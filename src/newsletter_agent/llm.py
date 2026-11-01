@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     ClaudeAgentOptions,
     CLIConnectionError,
     CLINotFoundError,
+    EffortLevel,
     Message,
     ProcessError,
     ResultError,
@@ -29,6 +30,7 @@ from newsletter_agent.text import storable_json
 log = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = 600
+EFFORT: EffortLevel = "high"
 MAX_TURNS = 3
 WEB_SEARCH_MAX_TURNS = 8
 STRUCTURED_TOOL = "StructuredOutput"
@@ -114,6 +116,7 @@ async def _structured(
         permission_mode="dontAsk",
         output_format={"type": "json_schema", "schema": schema},
         model=model,
+        effort=EFFORT,
         max_turns=WEB_SEARCH_MAX_TURNS if web_search else MAX_TURNS,
     )
     signals = _Signals(expected_tools=sorted([STRUCTURED_TOOL, *tools]))

@@ -11,7 +11,7 @@ Status on 2026-10-31:
 - A third review, of the repository about to be published, found 30 issues, and every one is fixed (REQ-54, section 17).
 - A fourth review, of the published code base, by seven reviewers with an adjudicator for the serious findings, found 32 issues. You decided its open questions (REQ-57 to REQ-60 and REQ-62, with one deferred in section 16), the fixes are in, and they were checked on the Mac and the Pi (REQ-61, sections 14 and 17). The same pull request makes Claude review only review and block on every problem it finds (REQ-63, REQ-64).
 - Claude Code's ultrareview of `main` after that found five more issues, and every one is fixed and was checked on the Mac (sections 14 and 17). Claude review now posts its verdict as a comment on the pull request.
-- Learning your taste from ratings (REQ-32) is built, and was checked on the Mac against a stand-in for Gmail, then against Gmail itself, with rating links clicked in Apple Mail on the Mac; a phone hasn't been tried (section 14).
+- Learning your taste from ratings (REQ-32) is built, and was checked on the Mac against a stand-in for Gmail, then against Gmail itself, with rating links clicked in Apple Mail on the Mac and in Gmail in a browser; a phone hasn't been tried (section 14).
 - The agent ran end to end in Docker on the Mac on 2026-10-31, with your Claude token, your Gmail app password and a YouTube Data API key: digests and a failure email went out through Gmail, a rating email was read back from the Sent folder, and YouTube topic search ran (section 14).
 - The project was renamed from `ai-news-agent` to `newsletter-agent` (REQ-33): the repository, the package `newsletter_agent`, the command, and every name derived from them.
 - A GitHub Actions pipeline with 17 checks (REQ-34 to REQ-45, and the Workflow guard) is written. The first 16 passed on GitHub in the private repository (section 14).
@@ -73,7 +73,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-29 | A fixed workflow: code fetches and stores; Claude scores, summarizes and writes the digest with no tools. The one exception is web search (REQ-28), which uses Claude's own web search tool through your subscription, with no other search service or key. You accepted that search results then reach a Claude that has a tool, and that searches use your plan's limits. Replaces REQ-21 | Verified on the Mac: scoring and digest sessions offered only `StructuredOutput`, web search sessions only `StructuredOutput` and `WebSearch` |
 | REQ-30 | Logs stay on the Pi, in the journal and the `runs` table; failure emails are the only signal that leaves it. You accepted that the logs go with the Pi if it is lost or compromised (security review SEC-6) | Accepted risk |
 | REQ-31 | No paid embedding service, such as OpenAI's | Holds; there is no embedding model |
-| REQ-32 | The agent learns your taste from ratings. Each item in a digest addressed to you has "More like this" and "Less like this" links; each run reads the emails they create, read-only, from your Gmail Sent folder; scoring shows Claude your recent likes and dislikes as examples; your footer counts ratings per source. Claude stays the only model and the scorer, with no new service, dependency or secret. A monthly email suggesting profile edits isn't part of it | Built; checked on the Mac against a stand-in for Gmail, then against Gmail itself: a rating email sent by a script was stored and used, and ratings clicked in Apple Mail reached the Sent folder. A phone hasn't been tried (section 14) |
+| REQ-32 | The agent learns your taste from ratings. Each item in a digest addressed to you has "More like this" and "Less like this" links; each run reads the emails they create, read-only, from your Gmail Sent folder; scoring shows Claude your recent likes and dislikes as examples; your footer counts ratings per source. Claude stays the only model and the scorer, with no new service, dependency or secret. The monthly email suggesting profile edits is REQ-83 | Built; checked on the Mac against a stand-in for Gmail, then against Gmail itself: a rating email sent by a script was stored and used, and ratings clicked in Apple Mail and in Gmail in a browser reached the Sent folder. A phone hasn't been tried (section 14) |
 | REQ-33 | The project is named `newsletter-agent`: "agent" already says AI, and a newsletter needn't be news. The repository, the package `newsletter_agent`, the command `newsletter-agent`, the Compose project, image, systemd units, container, database, secrets folder and Pi folder all follow | Done in the repository, on GitHub and on the Mac; the Pi still has the old copy (section 20) |
 | REQ-34 | A pipeline job, "PR hygiene", fails a pull request that has no linked issue | Passed on GitHub: it failed a pull request without a linked issue, then passed once one was linked |
 | REQ-35 | No code goes into `main` directly; every change arrives through a pull request | A rule in `CLAUDE.md`, enforced by the rule on `main` (REQ-50) |
@@ -96,12 +96,33 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | REQ-57 | The agent may fetch any public https site and path its sources link to. An allowlist of domains would break REQ-03 and REQ-28, so you accepted that risk | Accepted risk (section 16); only port 443 is allowed |
 | REQ-58 | The database setup should be one that other users of this project can set up without issues, as well as you on the Pi | Password logins with generated passwords, TLS 1.3 only, and TCP logins for the agent's role only (section 12); checked on the Mac and the Pi; the remaining risk is accepted (REQ-62) |
 | REQ-59 | Claude's two GitHub app workflows follow the pipeline's rules: no comments, actions pinned by commit, checkout without saved credentials; zizmor's `dangerous-triggers` finding is accepted for `claude.yml` and for `workflow-guard.yml`, which must run on `pull_request_target` to judge a pull request from `main`'s copy. Replaces REQ-43 | Every check passed on GitHub; zizmor passes with both exemptions |
-| REQ-60 | Deploys to the Pi come only from a reviewed `main` commit, and the deployed commit is recorded | README, "Deploy on the Pi"; `check`, each run's first log line and failure emails show the revision |
+| REQ-60 | Deploys to the Pi come only from a reviewed `main` commit, and the deployed commit is recorded | README, "Deploy on a Linux server"; `check`, each run's first log line and failure emails show the revision |
 | REQ-61 | Every finding of the fourth review is fixed, on one branch from `main`, for issue #4 | Section 17 |
 | REQ-62 | You accept that the database's two passwords and its TLS key don't change on their own and can be read by anyone with Docker access on the Pi | Accepted risk (section 16) |
 | REQ-63 | Claude review only reviews: it never changes a file, commits or pushes; changes come from your own Claude Code session | `CLAUDE.md`'s rule, and `scripts/check_review_workflow.py` in the Workflows job, which failed on each of 24 planted violations (section 14) |
 | REQ-64 | Every problem Claude review finds blocks the merge, however minor | The review's own prompt (section 12). It approved pull request #5, and on pull request #7 it blocked two commits, on the README banner and a gap in the requirement IDs, before approving the third (section 14) |
 | REQ-68 | The README opens with your "Engineered, Not Vibe Coded" banner, above its title on purpose: the heading, its badge, "#1 Stop vibe coding" with a "Merged" badge, the `diff` block, and the line "✅ Approved by human reviewers · All checks passed". The "Merged" badge and that line are your decision and part of the banner's design. They don't state the result of any merge, review or check. Replaces REQ-67, which left both out | In README.md; `CLAUDE.md`'s rule that the README covers setup and operations only allows the banner, badge and line included |
+| REQ-69 | Rating links carry no database token: a rating email's subject is `newsletter-agent feedback more` or `less` and the item's ID. You accept that a rating sent from one database's digest can land on an unrelated item in another database that reads the same Gmail, to keep the links plain for anyone setting up or reading the project | Built (section 7); accepted risk (section 16) |
+| REQ-70 | Claude runs as Opus at high effort, on the Mac and on the Pi, as a starting point | `llm.EFFORT`; `check` passed with Opus 5.5 and Haiku 5.5 at high effort. Local runs use the Pi's models (README, "Development") |
+| REQ-71 | YouTube Shorts are dropped: from channel feeds, entries linked as `/shorts/`; from YouTube search, videos of 3 minutes or less. On 2026-10-31, 192 of the 379 videos search had found were that short, and 14 of the 75 entries in the five channels' feeds were Shorts. A minimum of views or likes was considered and left out: search finds videos within a day or two of upload, half of them had fewer than 300 views, and the best-scored one had 4 | Built (section 7) |
+| REQ-72 | The agent records what can't be rebuilt later: every search term that found an item, the ratings each scoring call showed, the threshold each digest used, and why each item offered to a digest was left out | Built: migration 0005 (section 8) |
+| REQ-73 | No source fills more than 3 places in one digest; the candidates it holds back are recorded as left out, so they don't return every day | Built (section 9) |
+| REQ-74 | Items waiting to be fetched or scored for more than 7 days go back to `baseline` | Built (section 9) |
+| REQ-75 | Web search results dated more than 3 days before the search window are dropped | Built (section 7) |
+| REQ-76 | The digest has no intro paragraph; it goes from its heading straight to the first item | Built: `digest_v2`, kept in `digest_v3` (section 7) |
+| REQ-77 | The digest's text is about 1.75 times its earlier size: 1.5 times from your sample of 2026-10-31, then a little bigger at your request the same day; the score stands out in color | Built in `mail._html` (section 7) |
+| REQ-78 | Scoring sees a balanced sample of your ratings, at most 5 likes and 5 dislikes from 180 days and at most 2 of each per source, each with its source; the prompt reads a dislike as being about that item; a random tenth of batches is scored again without the ratings, and both scores are kept | Built (section 7, "Learning your taste") |
+| REQ-79 | Dropped on 2026-10-31, before release: a "Was this email worth your time?" Yes and No under each digest. You decided you don't need it, so nothing of it was kept | Dropped |
+| REQ-80 | The digest call chooses the set: up to 30 candidates in random order without scores, with your ratings and the titles sent in the last 7 days, return up to `DIGEST_MAX_ITEMS` in reading order, with the repeats it dropped named | Built (section 7) |
+| REQ-81 | One Claude call per run scores the titles of a queue longer than a run fetches, and fetching and scoring take each source's best titles first, keeping the turns between sources | Built (sections 4 and 9) |
+| REQ-82 | Scoring sees a long transcript's opening and a slice from its middle, not only its first 4,000 characters | Replaced by REQ-85 |
+| REQ-83 | At most once every 30 days, once 20 new ratings exist, Claude suggests edits to a profile of yours by email; the agent never edits it | Built (section 7, "Learning your taste") |
+| REQ-84 | Each digest addressed to you adds one wildcard, picked at random from items scored just below the threshold, marked as such, with its chance of being picked stored | Dropped on 2026-10-31 at your request; replaced by REQ-89 |
+| REQ-85 | Quality first: scoring reads each item's whole stored text, which keeps up to 400,000 characters, in batches of at most `SCORE_BATCH_SIZE` items and 200,000 characters; a longer item is scored alone. Replaces REQ-82 | Built (section 7, steps.py) |
+| REQ-86 | Each item in an email is summarized from its whole text in its own Claude call: a gist, 3 or 4 takeaways carrying the source's own claims, numbers, names and methods, and a highlights line shown right under the title, about 250–350 words, so that in most cases you don't need to open the link | Built (section 7) |
+| REQ-87 | A second call checks each summary against its source for unsupported statements and missing points, and a third rewrites it when the check finds any; the summary and what the check found are stored in the digest's body | Built (section 7) |
+| REQ-88 | `DIGEST_MAX_ITEMS` defaults to 8, because each item takes longer to read | Built (section 7, settings.py) |
+| REQ-89 | Each digest addressed to you ends, before the footer, with a list titled "Scored below your threshold": every item of its configured sources whose latest score, given in the last 7 days, is below the threshold, never offered or listed before, highest score first, by title, source and score, each with a "More like this" link that only records a rating. Replaces REQ-84 | Built (section 7) |
 
 **Working assumptions** (not confirmed; change them if they're wrong):
 
@@ -130,7 +151,7 @@ These are agreed. Their IDs match the session's intent record. REQ-04, REQ-08, R
 | Scheduling | A host systemd timer starting a one-shot container (REQ-19) | Matches the Pi's existing timer pattern; nothing runs between runs |
 | Delivery | Gmail's own SMTP server, from your account (REQ-11, REQ-14) | No extra mail component |
 | A heartbeat email on quiet days | No (REQ-16) | Your choice. The cost: a dead Pi or a revoked Gmail password looks like a quiet day (section 10) |
-| Models | A setting per step, `claude-opus-5-5` for scoring, the digest and web search (REQ-12) | Anthropic's advice is to try the most capable model first. Haiku 5.5 and Sonnet 5.5 also worked in E1 |
+| Models | A setting per step, `claude-opus-5-5` for scoring, the digest and web search (REQ-12), every call at high effort (REQ-70) | Anthropic's advice is to try the most capable model first. Haiku 5.5 and Sonnet 5.5 also worked in E1. High effort is your starting point; `llm.EFFORT` changes it for every call |
 | Embeddings | None (REQ-20, REQ-31) | REQ-05 rules out other providers, and Anthropic has none. A local model as Claude's helper was tested (E6): it judged taste no better than Claude with your ratings, so it waits until there are tens of ratings, or duplicate stories become a problem |
 | Learning your taste | Rating links that send an email to yourself, read from the Sent folder; recent ratings as examples in the scoring prompt (REQ-32) | One tap and Send per rating, and nothing new to run or pay for. Only you can put mail in your Sent folder, so ratings can't be faked by someone emailing you. In E5, ratings in the prompt moved scores the right way. Rejected: replies such as "+2 -5" (fragile to parse), links to a web endpoint (needs a published port), a Telegram bot (a new service and token), and Claude rewriting the profile itself (drift) |
 | Libraries | The standard library first (REQ-23) | `feedparser`, `trafilatura`, `jinja2`, `httpx` and `pyyaml` were replaced by `xml.etree`, `html.parser`, `html.escape`, `urllib` and `tomllib` |
@@ -169,11 +190,14 @@ flowchart TD
   lock -->|"yes"| migrate["apply pending migrations"]
   migrate --> ratings["read ratings: your rating emails from the Gmail Sent folder"]
   ratings --> collect["collect: every newsletter's sources, web search through Claude included"]
-  collect --> enrich["enrich: article text or transcript, up to the run's cap"]
+  collect --> expire["expire: items waiting over 7 days go back to baseline"]
+  expire --> triage["triage: Claude scores the titles of a queue longer than a run fetches"]
+  triage --> enrich["enrich: article text or transcript, up to the run's cap"]
   enrich --> assess["assess: Claude scores items against each newsletter's profile"]
   assess --> digest["digest: one per newsletter with items over its threshold"]
   digest --> deliver["deliver: email each unsent digest to its recipient"]
-  deliver --> record["record status, counts and Claude usage in runs"]
+  deliver --> suggest["suggest profile: at most monthly, Claude's suggested profile edits, by email to you"]
+  suggest --> record["record status, counts and Claude usage in runs"]
 ```
 
 `run.py` calls the steps in `steps.py` as plain functions, in order. Each step reads its work list once, at the start, so nothing can loop within a run. The steps record counts, Claude usage and failure flags on a `steps.Run` object. `run.py` writes them to the `runs` row when the run ends, whether it succeeded or not.
@@ -182,10 +206,13 @@ flowchart TD
 |---|---|---|---|
 | read ratings | when a newsletter goes to `SMTP_USERNAME`, the headers of rating emails in its Gmail Sent folder from the last 30 days | `feedback` | unchanged |
 | collect | every newsletter's enabled sources, from `config/newsletters/*/newsletter.toml`. A `web_search` source asks Claude, with only `WebSearch`, for recent links | new `items`; the source's runtime state | `new`, or `baseline` on a source's first sight (section 9) |
-| enrich | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `new` from its configured, enabled sources, taken one source at a time: each source's newest, then each source's second newest, and so on. An item with no publication date counts from when it was first stored | `item_content`, or the reason the fetch failed | `enriched` or `enrich_failed` |
-| assess | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `enriched` or `enrich_failed` from its configured, enabled sources, taken one source at a time like enrich, against its profile and recent ratings | `assessments` | `assessed`, or `assess_failed` (terminal) |
-| digest | per newsletter, assessed items at or above its threshold with no `digest_items` row | one `digests` row per newsletter with candidates, and its `digest_items` | unchanged |
+| expire | items in `new`, `enriched` or `enrich_failed` more than 7 days old (section 9) | their state | `baseline` |
+| triage | when a newsletter has more `new` items than `MAX_ITEMS_PER_RUN`, the titles of up to 200 of them with no title score, newest first; one Claude call per newsletter (REQ-81) | `items.title_score` | unchanged |
+| enrich | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `new` from its configured, enabled sources, taken one source at a time: each source's best by title score, then each source's second best, and so on, newest first among equals. An item with no publication date counts from when it was first stored | `item_content`, or the reason the fetch failed | `enriched` or `enrich_failed` |
+| assess | per newsletter, its share of `MAX_ITEMS_PER_RUN` for the whole run, items in `enriched` or `enrich_failed` from its configured, enabled sources, taken one source at a time like enrich, against its profile and recent ratings; a random tenth of batches is scored again without the ratings (REQ-78) | `assessments` | `assessed`, or `assess_failed` (terminal) |
+| digest | per newsletter, assessed items of its configured sources at or above its threshold with no `digest_items` row; Claude chooses the set (REQ-80); your digests list the items scored below the threshold in the last 7 days (REQ-89) | one `digests` row per newsletter with candidates, and its `digest_items` | unchanged |
 | deliver | digests with `sent_at` null, each to its newsletter's recipient | `sent_at` or `send_error` | unchanged |
+| suggest profile | for a newsletter addressed to you, at least 20 ratings stored since its last suggestions, which were at least 30 days ago (REQ-83) | an email to you, and a `profile_suggestions` row | unchanged |
 
 Items that fail to enrich are still scored on their title and feed summary.
 
@@ -230,15 +257,16 @@ flowchart LR
   Experiment E3 showed what `tools=[]` does: the session offers only `StructuredOutput`, structured output still works, and input drops from 11,962 tokens to 1,050 per call. A deny-list of 8 tools still left 19 tools available. Experiment E4 showed that `tools=["WebSearch"]` offers exactly `StructuredOutput` and `WebSearch`, and that the search works with the OAuth token.
 - **Fail closed.** `llm.py` reads the `init` message and raises `ClaudeAuthError` unless its tool list is exactly `["StructuredOutput"]`, or exactly `StructuredOutput` and `WebSearch` for a web search session. A session that sends no `init` message fails the same way. If an SDK upgrade adds tools, the run stops; it doesn't carry on with more tools than intended.
 - **No secrets in reach.** The SDK starts Claude Code with the whole process environment. So `settings.take_secrets` removes these variables from `os.environ` before anything else runs: `DATABASE_URL`, `SMTP_USERNAME`, `SMTP_APP_PASSWORD`, `YOUTUBE_API_KEY`, `POSTGRES_PASSWORD`, `AGENT_DB_PASSWORD`, and every `DIGEST_TO_<KEY>` recipient address. Only `CLAUDE_CODE_OAUTH_TOKEN` stays, because Claude Code needs it. `WebSearch` can't read the environment or files, so the search session can't put the token into a query. Removing a variable from `os.environ` doesn't remove it from `/proc/<pid>/environ`, so this protection rests on Claude having no tool that reads files.
-- **Fetched text is fenced.** Each item goes into a prompt inside `<item n="…">` tags, and the titles of items you rated go inside a `<feedback>` block. `text.fence` escapes any `<item`, `</item`, `<feedback` or `</feedback` inside that text, also with spaces or zero-width characters inside the tag. The prompt tells Claude that both are material to judge, never instructions. The search prompt says the same of search results. `prompts.render` fills a template's placeholders in one pass, so a title containing `{{items}}` can't pull in other text.
+- **Fetched text is fenced.** Each item goes into a prompt inside `<item n="…">` tags, and the titles of items you rated, and of items sent in the last 7 days, go inside `<feedback>` blocks, in the scoring, digest and profile prompts. `text.fence` escapes any `<item`, `</item`, `<feedback` or `</feedback` inside that text, also with spaces or zero-width characters inside the tag. The prompt tells Claude that both are material to judge, never instructions. The search prompt says the same of search results. `prompts.render` fills a template's placeholders in one pass, so a title containing `{{items}}` can't pull in other text.
 - **Claude never sees database IDs.** Items are numbered 1 to N within a batch. Code drops any number outside that range, and any number that appears twice.
 - **Links from a search are checked before they are stored.** A link Claude returns is kept only if it is a valid `http` or `https` URL, at most 2,000 characters, has no user name or password, names no port other than 443 once it is turned into https, and its host resolves only to public addresses (`http.check_url`). The enrich step checks the address again when it fetches the page.
 - **Code writes the email.**
-  - `mail.render_digest` passes every text it shows through `text.defang`: titles (a web search item's title comes from Claude), summaries, score reasons and the intro. `defang` replaces URLs with "[link removed]" and breaks up every dot of any domain-like word and every IPv4 address, so `www.evil.click` becomes `www[.]evil[.]click`. Look-alike dots, such as `。` and `․`, count as dots. The cost is that names such as `Node.js` show as `Node[.]js`.
+  - `mail.render_digest` passes every text it shows through `text.defang`: titles (a web search item's title comes from Claude), every part of a summary and score reasons. `defang` replaces URLs with "[link removed]" and breaks up every dot of any domain-like word and every IPv4 address, so `www.evil.click` becomes `www[.]evil[.]click`. Look-alike dots, such as `。` and `․`, count as dots. The cost is that names such as `Node.js` show as `Node[.]js`.
   - Every value in the HTML goes through `html.escape`.
   - Links come only from stored item URLs, only `http` and `https` ones, and each link shows its domain in ASCII, so an international look-alike of a familiar domain shows in its `xn--` form. For a web search item, that stored URL came from Claude's search output and passed the checks above.
-  - The one other kind of link is the pair of rating links on each item of a digest addressed to you: `mailto:` links that code builds from `SMTP_USERNAME`, the item's database ID and the database's feedback token (section 7, "Learning your taste"). No text from Claude or a page goes into them.
+  - The one other kind of link is the pair of rating links on each item of a digest addressed to you: `mailto:` links that code builds from `SMTP_USERNAME` and the item's database ID (section 7, "Learning your taste"). No text from Claude or a page goes into them.
 - **Consequences.**
+  - Claude's own summary was written from untrusted text, so it is fenced as well when the check and the rewrite read it, and so is the check's list (REQ-87).
   - Prompt injection in a fetched page can at most skew a score or a summary, or make its own item fail scoring until it is set aside as `assess_failed` after 3 runs (section 7, steps.py). It can't make Claude fetch, run or send anything.
   - Prompt injection in a search result reaches a Claude that can search. At worst it can make Claude run extra searches, which use plan limits but are capped by `max_turns`; send words from the prompt to the search engine, where the prompt holds only the search term; or return a link the attacker chose. Such a link must still be on a public host. Its page is fetched under the 90-second deadline, so a deliberately slow server can't stall the run, and the page is scored against the profile like any other. In the injection test (section 14), Haiku ignored planted instructions.
   - Any other new capability has to be written as code.
@@ -295,7 +323,9 @@ newsletter-agent/
       youtube.py              a channel's Atom feed, parsed by feed.py
       youtube_search.py       YouTube Data API search.list by topic (REQ-13)
       web_search.py           web search through Claude's WebSearch tool (REQ-28, REQ-29)
-    prompts/                  load(), render(), and score_v2.md, digest_v1.md, search_v1.md
+    prompts/                  load(), render(), and score_v3.md, digest_v3.md, summary_v1.md,
+                              check_v1.md, revise_v1.md, search_v1.md, triage_v1.md,
+                              profile_v1.md
     migrations/               numbered, forward-only SQL files; a new one takes the next number
 ```
 
@@ -309,8 +339,8 @@ newsletter-agent/
 
 The README lists every variable and its default. The values that came from decisions:
 
-- `SCORE_MODEL`, `DIGEST_MODEL` and `SEARCH_MODEL` (REQ-12), all `claude-opus-5-5`;
-- `MAX_ITEMS_PER_RUN` 100, `DIGEST_MAX_ITEMS` 15 and `BACKFILL_DAYS` 7 (REQ-17);
+- `SCORE_MODEL`, `DIGEST_MODEL` and `SEARCH_MODEL` (REQ-12), all `claude-opus-5-5`, each call at high effort (REQ-70);
+- `MAX_ITEMS_PER_RUN` 100, `DIGEST_MAX_ITEMS` 8 (REQ-88) and `BACKFILL_DAYS` 7 (REQ-17);
 - `SCORE_THRESHOLD` 6, on the 0–10 scale. This value was proposed, and is to be tuned;
 - `TRANSCRIPTS_ENABLED` (REQ-15);
 - `YOUTUBE_SEARCH_MAX_QUERIES` 10. The API allows 100 `search.list` calls a day;
@@ -351,15 +381,16 @@ The last argument is the run's deadline, a `time.monotonic()` value, so a change
   - Atom links prefer `rel="alternate"`.
   - Malformed XML fails the source, and the failure is recorded.
 - **`sitemap.py`** keeps the URLs whose path matches an `include` rule. It follows a sitemap index one level deep, at most 10 child sitemaps, on the same host only, and checks the run deadline before each child.
-- **`youtube.py`** fetches `https://www.youtube.com/feeds/videos.xml?channel_id=…` and keeps each video's ID and watch URL.
-- **`youtube_search.py`** makes one `search.list` call per term, with `type=video`, `relevanceLanguage=en`, `order=relevance` and `maxResults=25`.
+- **`youtube.py`** fetches `https://www.youtube.com/feeds/videos.xml?channel_id=…` and keeps each video's ID and watch URL. It skips Shorts, which the feed links as `/shorts/` URLs (REQ-71).
+- **`youtube_search.py`** makes one `search.list` call per term, with `type=video`, `relevanceLanguage=en`, `order=relevance` and `maxResults=25`. Search results don't say which videos are Shorts, so it then asks `videos.list` (`part=contentDetails`, 50 videos a call, 1 unit each of the 10,000-unit daily quota) for each video's length, and keeps only videos longer than 3 minutes, YouTube's limit for a Short (REQ-71). A video `videos.list` doesn't return, or whose length doesn't parse, is dropped, and a failed call fails the source like a failed search.
   - `publishedAfter` is 12 hours before the source's last successful collection, because YouTube indexes some videos hours after they are published, or 48 hours ago on the first run.
   - It checks the run deadline before each call, and a passed deadline fails the source.
   - The key goes in the `X-Goog-Api-Key` header, never in the URL.
   - Any failed call fails the whole source, so `publishedAfter` doesn't move forward past results it missed.
 - **`web_search.py`** runs one Claude session per term, with only `WebSearch` (section 5), using the `search_v1` prompt and `SEARCH_MODEL`.
   - It asks for pages from roughly the last N days, where N is the days since the source's last success, at least 1 and at most 7, or 2 on the first run. Search engines have no exact date filter here, so the window is a request to Claude, not a guarantee.
-  - It keeps at most 10 links per term, after the link checks in section 5. The item's ID is its canonical URL. Claude's date is kept when it parses and isn't in the future; most results have none.
+  - It keeps at most 10 links per term, after the link checks in section 5. The item's ID is its canonical URL. Claude's date is kept when it parses and isn't in the future; most results have none. A result dated more than 3 days before the window is dropped (REQ-75): in testing, 5 of 24 dated results were over a week old, the oldest from 2026-05-22.
+  - A page found by several terms is stored once, with every term that found it in `search_terms`; `youtube_search.py` does the same for videos (REQ-72).
   - A term whose output is invalid is skipped, and the others go on. When every term's output is invalid, the source fails with `ClaudeOutputError`, so it counts as failing and its search window doesn't move forward. It checks the run deadline before each term, and a passed deadline fails the source the same way, so the next run's window still covers the terms that didn't run. A sign-in or availability failure fails the source and stops Claude for the run (section 10). In each case, the usage of every session the source ran is still recorded.
   - `check` runs one search, for "artificial intelligence", when any newsletter has a `web_search` source.
 
@@ -376,7 +407,7 @@ There are two branches, chosen by source type:
   - It drops lines shorter than 25 characters.
   - The title comes from `og:title`, or else the page's first `<title>` outside the skipped parts, so an icon's `<svg><title>` isn't added to it. This is where sitemap items get their title.
 
-Stored text is capped at 100,000 characters, titles at 500, and NUL characters are removed, because Postgres can't store them. A failure is caught per item and recorded with its exception type and message, and the item becomes `enrich_failed`.
+Stored text is capped at 400,000 characters, about 7 hours of talk (REQ-85), titles at 500, and NUL characters are removed, because Postgres can't store them. A failure is caught per item and recorded with its exception type and message, and the item becomes `enrich_failed`.
 
 ### llm.py
 
@@ -386,7 +417,7 @@ One public function:
 structured(prompt: str, schema: dict, model: str, *, timeout: float = 600, web_search: bool = False) -> Structured
 ```
 
-`Structured` holds `output`, `model`, the `tools` the session offered, `usage` and `cost_usd`. The function is synchronous and wraps the SDK's async `query()` in `asyncio.run()`. Inside:
+`Structured` holds `output`, `model`, the `tools` the session offered, `usage` and `cost_usd`. Every session runs at `llm.EFFORT`, `high` (REQ-70), which the SDK passes to Claude Code as `--effort high`; Claude Code's start message then reports per-turn effort as active, with Opus 5.5 and Haiku 5.5 alike. The function is synchronous and wraps the SDK's async `query()` in `asyncio.run()`. Inside:
 
 1. `contextlib.aclosing(query(...))` ends the Claude Code child process when the call ends, including on timeout. This was checked on the Pi: no `claude` process remained 2 seconds after a timed-out call.
 2. It reads the stream with an `asyncio.timeout()` around it.
@@ -411,21 +442,25 @@ An invalid token produces a `ResultMessage` with `subtype="success"`, `is_error=
 
 - **The six steps** are plain functions that take `(conn, settings, …)`. Assess and digest call `llm.structured` directly; collect reaches it only through the `web_search` collector.
 - **Commits.** A step commits after each source, each item or each batch, so work already done survives a later failure.
-- **Excerpts.** Prompts carry excerpts, not full texts: up to 4,000 characters per item for scoring, and 1,500 for the digest.
+- **What Claude reads.** Scoring reads each item's whole stored text (REQ-85), and so does each summary (REQ-86). The digest call, which only chooses, gets each candidate's first 1,500 characters and its score reason, which was written from the whole text.
 - **Read ratings** runs first; see "Learning your taste" below.
-- **Assess.** It sends batches of `SCORE_BATCH_SIZE`, each with the newsletter's recent ratings, which it reads once per newsletter.
+- **Assess.** It sends batches of at most `SCORE_BATCH_SIZE` items and `steps.SCORE_BATCH_CHARS`, 200,000 characters of text, each with the newsletter's recent ratings, which it reads once per newsletter. An item longer than that is scored alone. In a test on 12 items near the threshold, the whole text changed one send decision, from 5 to 6, both times it was scored, and cost about 5 times the old excerpts (section 14).
   - Items Claude scores validly are saved.
   - Items left unscored go round once more, then are split in halves down to single items.
   - An item that fails alone has `assess_attempts` incremented, and after 3 attempts it becomes `assess_failed`.
   - After enough invalid answers in a row, it raises `ClaudeUnavailable`: at least 4, and enough for the retry and the halving to reach a single item, which is 7 for a batch of 20 (`steps.output_error_limit`). So one item that always gets an invalid answer is set aside as `assess_failed` after 3 runs instead of stopping scoring, and a model that keeps failing costs 7 calls a run, not two per item. The cost: after 3 such runs, the item at the head of the queue may be set aside although it isn't the cause. The deadline is checked before every call, retries included.
-- **Digest.** The top `DIGEST_MAX_ITEMS` candidates by score are offered to Claude, which returns an `intro` and one summary per item.
-  - Offered items that Claude leaves out still appear, after the others, with their score reason as the text.
-  - If the call fails, a fallback digest uses each item's score reason.
+- **Digest.** Claude chooses the set (REQ-80). The best 30 candidates by score, at most 3 from one source, go to the `digest_v3` prompt in a random order, without their scores, beside your recent ratings and the titles sent in the last 7 days. Claude returns up to `DIGEST_MAX_ITEMS` of them in reading order and names the ones it left out as repeats of another candidate or of a title already sent; it writes no summaries. Shuffling turns LLM rankers' preference for early items into noise, and hiding scores keeps Claude from copying them. The code drops numbers it doesn't recognize and repeats an item it already chose. Pool items not chosen are recorded as `not_chosen` or `repeat`; when Claude can't answer, the digest takes the best `DIGEST_MAX_ITEMS` by score, and the email says so. It writes no intro, at your request (REQ-76). Your digests also list, after the items, every item of the newsletter's configured sources whose latest score, given in the last `BELOW_THRESHOLD_DAYS` (7) days, is below the threshold and that no digest has offered or listed, highest score first (REQ-89). Each is stored in `digest_items` as not included, with its place in the list and the reason `below_threshold`, so it's listed once; the run counts them as `below_threshold_<newsletter>`. The 7 days keep the first digest from listing the whole older backlog. The list replaces the wildcard of REQ-84, one random item from just below the threshold: you see everything the threshold drops and rate what you'd have wanted.
+  - **Summaries (REQ-86, REQ-87).** Each included item is then summarized from its whole text, one item at a time, with `DIGEST_MODEL`:
+    1. `summary_v1` returns a gist of one or two sentences, 3 or 4 takeaways of at most about 50 words and a highlights sentence, about 250–350 words. The highlights sentence says what stands out for you and what the original offers that the summary doesn't, so it helps you decide both whether to read on and whether to open the link. It asks for the source's own claims, numbers, names and methods, nothing from outside it, and names kept as the captions spell them unless the title or description shows the right spelling.
+    2. `check_v1` gets the source and the summary, both fenced, and lists the statements the source doesn't support and at most 3 points that matter more than something included.
+    3. When it lists anything, `revise_v1` gets the source, the summary and the check, all fenced, and rewrites the summary, told to confirm each point against the source, because the check can be wrong. The summary is rewritten once, never checked again.
+    The digest's `body_json` keeps, per item, the `summary` (`gist`, `takeaways`, `highlights`) and the `check` (`checked`, and the counts `unsupported` and `missing`, and `revised`), so a resent digest shows the same text. A summary that fails, an item with no stored text, or a deadline that passed leaves the item with only its ID, and the email shows its score reason with a note saying so; the run counts `summaries`, `summaries_revised` and `unsummarized`. Each item takes about 1–2 minutes and, at API prices, $0.15–0.95 of the SDK's estimate, depending on its length; in a test of 3 items, each check found 2 to 4 problems: merged points, a statement credited to the wrong source, a reworded quote (section 14).
   - With no candidates, no digest is created and no email is sent (REQ-16).
 
 ### mail.py
 
-- `render_digest(...) -> Email` is pure. It builds the subject and heading from the newsletter's name, and the plain text and HTML. Every value in the HTML goes through `html.escape`. When `health` is `None`, the email has no health footer and no token warning. When `feedback_to` is set, each item gets the two rating links; `deliver` sets it, to `SMTP_USERNAME`, only on digests addressed to `SMTP_USERNAME`.
+- `render_digest(...) -> Email` is pure. It builds the subject and heading from the newsletter's name, and the plain text and HTML. Every value in the HTML goes through `html.escape`. The HTML is sized for reading (REQ-77): body text 28 px, item titles 28 px, the heading 36 px, the source line 24 px, at most 760 px wide, and each item's score in a green tag that keeps its text, "score 8/10", so the color doesn't carry the meaning alone. Each item shows, under its title and source line, "Highlights:" in grey, then its summary's gist and its takeaways as a bulleted list (REQ-86); an item without a summary shows its score reason and a grey note saying Claude couldn't summarize the full text. The list of items below the threshold (REQ-89) shows each title with its source and its score in a tag colored by the score: yellow from 4 up, orange for 2 and 3, red for 0 and 1, so the score stands out without looking like a pass and the tag keeps its text, and a small "More like this" link at 18 px, because rating there isn't the focus.
+- `render_profile_suggestions(...) -> Email` is pure too: a plain-text email of Claude's suggested profile edits, each passed through `text.defang` (REQ-83). When `health` is `None`, the email has no health footer and no token warning. When `feedback_to` is set, each item gets the two rating links; `deliver` sets it, to `SMTP_USERNAME`, only on digests addressed to `SMTP_USERNAME`.
 - `render_failure(reason, today)` builds the failure notice, with the commands to look further and the image's revision. It needs neither the database nor Claude.
 - `error_summary(error)` is what `deliver` and `notify_failure` log and store for a failed send: for SMTP errors only the type and the SMTP reply codes, because their text quotes email addresses; for any other error its type and message.
 - `send(email, mail_settings, to)` connects to `smtp.gmail.com` on port 587 with a 60-second timeout, and uses STARTTLS. Digests go to their newsletter's recipient; failure emails go to `SMTP_USERNAME`.
@@ -436,7 +471,7 @@ An invalid token produces a `ResultMessage` with `subtype="success"`, `is_error=
 
 Your ratings teach scoring what you like. Claude still scores, with no tools, and nothing new runs: no service, dependency or secret is added.
 
-1. **Rating links.** In a digest addressed to `SMTP_USERNAME`, each item has two links, "More like this" and "Less like this". `mail.feedback_link` builds each as a `mailto:` link to `SMTP_USERNAME` whose subject names the item and the database: `newsletter-agent feedback more 1234 3f9a0c51d2e7` or the same with `less`, where 1234 is the item's ID and the last part is the database's own random token, made by migration `0004_feedback_token.sql`. A rating whose token isn't this database's is never stored, so after a rebuild, or in a test database signed in to the same Gmail, old ratings can't land on unrelated items with the same ID. Tapping one opens a ready-made email to yourself; sending it is the rating.
+1. **Rating links.** In a digest addressed to `SMTP_USERNAME`, each item has two links, "More like this" and "Less like this". `mail.feedback_link` builds each as a `mailto:` link to `SMTP_USERNAME` whose subject names the item: `newsletter-agent feedback more 1234` or the same with `less`, where 1234 is the item's ID. Until 2026-10-31 the subject also carried a random token naming the database; you dropped it to keep the links plain (REQ-69), and a subject with a token no longer matches. So a rating sent from one database's digest can be stored by another database that reads the same Gmail, against an unrelated item with the same ID, if a digest of that database included it (section 16). Tapping one opens a ready-made email to yourself; sending it is the rating.
    - The words `more` and `less` replace the `+` and `-` the research proposed, because some mail apps turn a `+` in a `mailto:` link into a space.
    - Digests for anyone else have no links: their emails would land in a mailbox the agent can't read.
 2. **Reading them.** The run's first step, `steps.read_ratings`, does nothing unless a newsletter goes to `SMTP_USERNAME`. Otherwise `mail.read_ratings`:
@@ -447,11 +482,12 @@ Your ratings teach scoring what you like. Claude still scores, with no tools, an
    - fetches only the `Subject`, `Date` and `Message-ID` headers of the newest 500 matches at most, with `BODY.PEEK`, never a body.
 
    Only you can put mail in your Sent folder, so someone emailing you can't fake a rating.
-3. **Storing them.** `store.save_rating` adds a `feedback` row only when the subject matches exactly, the email has a `Message-ID` and a `Date`, and the item was included in a digest of a newsletter addressed to `SMTP_USERNAME`. The `Message-ID` is unique, so reading the same email again on later runs adds nothing. Rating an item again stores a second row; the latest one counts.
-4. **Using them.** Scoring uses the `score_v2` prompt. After the profile, it shows the newsletter's latest rating of each item rated in the last 60 days: at most 5 liked and 5 disliked titles, newest first, each on one line, cut to 200 characters and fenced. The prompt calls them evidence of taste that refines the profile, and says the profile still decides what is in scope. With no ratings yet, both lists say "(none yet)".
+3. **Storing them.** `store.save_rating` adds a `feedback` row only when the subject matches exactly, the email has a `Message-ID` and a `Date`, and the item was included in a digest of a newsletter addressed to `SMTP_USERNAME`, or listed in one below the threshold (REQ-89). The `Message-ID` is unique, so reading the same email again on later runs adds nothing. Rating an item again stores a second row; the latest one counts.
+4. **Using them.** Scoring uses the `score_v3` prompt (REQ-78). After the profile, it shows the newsletter's latest rating of each item rated in the last 180 days: at most 5 liked and 5 disliked, and at most 2 of each from one source, so one burst of ratings can't fill the list. Each is one line, newest first: the source's key, which is trusted config, and the title, cut to 200 characters and fenced. Claude's score reasons aren't shown: they were written from untrusted pages. The prompt calls the ratings evidence of taste that refines the profile, says a rating is about that one item, its depth, angle or source, and lowers a whole topic only when it has more dislikes than likes. With no ratings yet, both lists say "(none yet)". A random tenth of the batches scored with ratings is scored again without them, and the second score is stored in `assessments.score_without_ratings`, so the paired difference shows what ratings move, per source and topic. The digest call sees the same ratings (REQ-80).
+   - **Profile suggestions** (REQ-83). After delivery, once a newsletter addressed to you has at least 20 ratings stored since its last suggestions, and those were at least 30 days ago, Claude reads up to 100 of them, newest first, and suggests at most 5 edits to `interests.md`. They come to you as a plain-text email, `<name>: suggested profile changes`, and are stored in `profile_suggestions`; a failure is logged and the run ends `partial`. The agent never edits the profile.
 5. **Seeing them.** Your footer counts your latest rating of each item by source, such as `simon-willison 2 more, 2 less`, to help decide which sources to keep, and has one line saying how the links work.
 
-A failure to read ratings, such as a rejected sign-in, doesn't stop the run: it ends `partial`, scoring uses the ratings already stored, and your footer names the error. `check` signs in, reads the Sent folder, and reports how many ratings it found. The agent never changes your profile or search terms; you do (section 18).
+A failure to read ratings, such as a rejected sign-in, doesn't stop the run: it ends `partial`, scoring uses the ratings already stored, and your footer names the error. `check` signs in, reads the Sent folder, and reports how many ratings it found. The agent never changes your profile or search terms; you do, with the monthly suggestions to help (section 18).
 
 ### store.py
 
@@ -482,18 +518,18 @@ sources(id, newsletter, key, type, url, definition, etag, last_modified, first_s
         UNIQUE (newsletter, key))
 items(id, newsletter, source_id, external_id, url, canonical_url, title, published_at, summary,
       state in (baseline, new, enriched, enrich_failed, assessed, assess_failed),
-      assess_attempts, first_seen_at,
+      assess_attempts, first_seen_at, search_terms, queued_at, title_score,
       UNIQUE (source_id, external_id), UNIQUE (newsletter, canonical_url))
 item_content(item_id PK, kind in (article, transcript), text, fetched_at, error)
 assessments(id, item_id, model, prompt_version, profile_hash, score 0-10, reason, run_id,
-            created_at, UNIQUE (item_id, prompt_version, model))
+            created_at, feedback_ids, score_without_ratings, UNIQUE (item_id, prompt_version, model))
 digests(id, run_id, newsletter, body_json, model, prompt_version, fallback, created_at, sent_at,
-        send_error, UNIQUE (run_id, newsletter))
-digest_items(digest_id, item_id UNIQUE, position, included)
+        send_error, threshold, UNIQUE (run_id, newsletter))
+digest_items(digest_id, item_id UNIQUE, position, included, reason)
 runs(id, started_at, finished_at, status, counts_json, usage_json, error,
      claude_unavailable, notice_sent)
 feedback(id, message_id UNIQUE, item_id, liked, sent_at, read_at)
-instance(id PK, feedback_token)
+profile_suggestions(id, newsletter, run_id, body_json, created_at)
 schema_migrations(version PK, applied_at)
 ```
 
@@ -501,14 +537,16 @@ The DDL is `src/newsletter_agent/migrations/0001_init.sql`, plus:
 
 - `0002_source_definition.sql`, which adds `sources.definition`: the source's type, URL, channel and include rules as JSON, so a change to them can be noticed;
 - `0003_feedback.sql`, which adds `feedback`: one row per rating email, keyed by its `Message-ID`. The item's newsletter, source and position in its digest come from joins, not copies;
-- `0004_feedback_token.sql`, which adds `instance`: one row holding the database's random feedback token, which every rating link carries (section 7, "Learning your taste").
+- no 0004: `0004_feedback_token.sql` added `instance`, one row holding the random token rating links carried until 2026-10-31 (REQ-69). Once nothing read it, you had the migration deleted on 2026-10-31 rather than kept for an unused table. A database that applied it keeps the table, which nothing uses; `drop table instance` removes it. The numbers aren't reused, because `schema_migrations` records each file's name;
+- `0005_review_logging.sql`, which records what the recommender review found can't be rebuilt later (REQ-72): `items.search_terms`, every search term that found the item in the run that first stored it; `items.queued_at`, when `backfill` queued it; `assessments.feedback_ids`, the `feedback` rows the scoring prompt showed; `digests.threshold`, the score threshold in force; and `digest_items.reason`, why an offered item was left out;
+- `0006_review_features.sql`, which adds `items.title_score` (REQ-81), `assessments.score_without_ratings` (REQ-78) and `profile_suggestions` (REQ-83). Until 2026-10-31 it also added `digest_items.chance` for the wildcard (REQ-84); when the wildcard was dropped, you had the line removed from this migration, which no shared database had applied. A database that applied the earlier version keeps the column, which nothing uses; `alter table digest_items drop column chance` removes it.
 
 - **Identity.**
   - An item is identified by its source's own ID: the RSS `guid`, the Atom `id`, the YouTube video ID, or the canonical URL for sitemap entries.
   - `canonical_url` is also unique, so the same article or video arriving from two sources is stored once.
   - Canonicalization removes the fragment, `utm_*` and `source=rss…` parameters, and a trailing slash. It turns any YouTube URL into `https://www.youtube.com/watch?v=<id>`.
-- **Digest membership is an anti-join, not a time window.** The candidates are assessed items at or above the threshold with no `digest_items` row. Every candidate offered gets a row, marked included or not, so each item is offered exactly once. Digests are keyed by `run_id`, so changing the schedule needs no schema change.
-- **Re-scoring.** A new prompt or a changed interest profile becomes a new `prompt_version` or `profile_hash`. Because of the anti-join, re-scored items don't return to the digest. Items already scored with `score_v1` keep that score; `score_v2` applies to items scored from then on. The ratings shown in a prompt change from run to run and aren't recorded with the score.
+- **Digest membership is an anti-join, not a time window.** The candidates are assessed items at or above the threshold with no `digest_items` row. Every candidate offered gets a row, marked included or not, so each item is offered exactly once. A row left out says why in `reason`: `source_cap`, past the 3 items one source may have; `cap`, past the 30 candidates the digest call sees, or past `DIGEST_MAX_ITEMS` when Claude couldn't choose; `repeat`, named by Claude as a repeat; or `not_chosen`. An item below the threshold gets a row only in your digests, when it's listed (REQ-89): not included, with the reason `below_threshold` and its place in the list; the digest's `threshold` shows which scores it missed by. Digests are keyed by `run_id`, so changing the schedule needs no schema change.
+- **Re-scoring.** A new prompt or a changed interest profile becomes a new `prompt_version` or `profile_hash`. Because of the anti-join, re-scored items don't return to the digest. Items keep the score of the prompt version that scored them; `score_v3` applies to items scored from then on. The ratings shown in a prompt change from run to run; since migration 0005 each score records them, as the `feedback` IDs in `assessments.feedback_ids`.
 - **Left out on purpose.** There is no full-text search column and no content hash, because no agreed requirement uses them.
 
 ## 9. Volume control
@@ -521,12 +559,13 @@ The first review found that the seed sitemaps hold 4,732 URLs, which would mean 
 - **First-sight baseline.** The first time a source is collected, its entries are stored as `baseline` and never scored. The exceptions are entries published within `BACKFILL_DAYS`, and web search results, which are recent by request. Sitemaps have no trusted dates, so a sitemap's first sight is entirely baseline.
 - **A changed source starts again.** When a source's type, URL, channel or include rules change in config, `store.sync_source` clears its first sight, ETag and Last-Modified, so its next collection is a first sight again. Without this, widening a sitemap's include rules would have queued hundreds of old pages as new. Search terms aren't part of the definition, so editing them doesn't take a new baseline. The first local run stored 2,605 baseline items and 87 new ones.
 - **`MAX_ITEMS_PER_RUN`** caps enrichment, and separately scoring, for the whole run (REQ-17). Each newsletter in turn gets an even share of what's left, so a busy newsletter can't starve another and a quiet one's unused share goes to the ones after it.
-  - Within a newsletter's share, items are taken one source at a time: each source's newest item, then each source's second newest, and so on. A busy source, such as YouTube search with up to 25 videos per term, can't crowd out a short curated list. Before this rule, newest-first across all sources let search results push curated posts out of reach for good (fourth review, M4).
-  - Only the newsletter's configured, enabled sources are picked from, so a source you removed or turned off stops being fetched and scored at once.
+  - Within a newsletter's share, items are taken one source at a time: each source's best item, then each source's second best, and so on. Within a source, items go by title score (REQ-81), then newest first, so a busy search source spends its turns on its most promising titles. A busy source, such as YouTube search with up to 25 videos per term, can't crowd out a short curated list. Before this rule, newest-first across all sources let search results push curated posts out of reach for good (fourth review, M4).
+  - Only the newsletter's configured, enabled sources are picked from, so a source you removed or turned off stops being fetched and scored at once. Digest candidates and the list of items below the threshold come from the configured sources too, so items it had already scored aren't offered either.
   - An item with no publication date, as most web search results are, counts from when it was first stored.
-  - The rest wait for the next run, and your footer shows how many items are waiting. Items aren't aged out yet; that waits for a week of real runs (section 20).
+  - The rest wait for the next run, and your footer shows how many items are waiting.
+  - **Items age out (REQ-74).** Right after collection, `steps.expire` moves items still waiting to be fetched or scored back to `baseline` once they are more than 7 days old, counted from their date, or from first sight when they have none, or from the `backfill` that queued them. YouTube search can find more videos in one run than the run may score, so without this the queue only grew: 557 items were waiting after the seven test runs of 2026-10-31.
 - **Lowering a score threshold** releases a backlog once: every earlier item at the new level becomes a candidate, the next digest offers the best `DIGEST_MAX_ITEMS` of them, and the rest are recorded as not included.
-- **`DIGEST_MAX_ITEMS`** caps each digest. Candidates beyond it are recorded as not included.
+- **`DIGEST_MAX_ITEMS`** caps each digest, and no source may fill more than 3 of its places (REQ-73), so neither search source can fill an email. Candidates left out are recorded as not included, with the reason, so they don't come back the next day.
 - **`newsletter-agent backfill --newsletter <key> --source <key> --since <date>`** moves selected `baseline` items to `new`, at most `MAX_ITEMS_PER_RUN` unless `--limit` says otherwise. Sitemap entries have no publication date, so for a sitemap source `--since` compares against when the item was first stored, and the items are picked in reverse sitemap order.
 
 **An item's life:**
@@ -542,6 +581,9 @@ stateDiagram-v2
   enrich_failed --> assessed : scored on title and summary
   enriched --> assess_failed : third failed attempt
   enrich_failed --> assess_failed : third failed attempt
+  new --> baseline : waited over 7 days
+  enriched --> baseline : waited over 7 days
+  enrich_failed --> baseline : waited over 7 days
 ```
 
 Only `assessed` items can reach a digest, and each is offered to one digest at most.
@@ -971,7 +1013,7 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
     It made 9 Claude calls, which the SDK estimated at $0.27; with plan sign-in that counts against plan limits and isn't billed.
   - A rating email for that item was sent from your address to itself, as the "More like this" link would. Gmail's `SEARCH SUBJECT` found it, the next run stored it and scored with it in the prompt, and your footer counted "web-search 1 more, 0 less".
   - **Rating links in a mail app.** Later that day you clicked rating links in a digest in Apple Mail on the Mac. With Chrome as the Mac's default email reader, a click brought Chrome forward, but you saw no draft. With Apple Mail's "Default email reader" set to Mail, a click opened a draft to yourself with the rating subject filled in. Once sent, each was in the Sent folder, read over IMAP with `mail.read_ratings`. No run has stored a clicked rating yet.
-  - **A deleted rating email is lost.** A rating email to yourself also lands in your Inbox, and Gmail keeps it as one message. Deleting it from the Inbox moves it to Trash, and Gmail's Sent Mail folder over IMAP leaves trashed messages out, so a run that hasn't read it yet never will. Of the three rating emails found that day, two were in Trash, one of them already stored. Archiving it, which only takes it out of the Inbox, should keep it in Sent; that wasn't tried.
+  - **A deleted rating email is lost.** A rating email to yourself also lands in your Inbox, and Gmail keeps it as one message. Deleting it from the Inbox moves it to Trash, and Gmail's Sent Mail folder over IMAP leaves trashed messages out, so a run that hasn't read it yet never will. Of the three rating emails found that day, two were in Trash, one of them already stored. Archiving keeps it in Sent: with a Gmail filter on the rating subject set to "Skip the Inbox", a rating sent from Apple Mail and one sent from Gmail in a browser never showed in the Inbox, stayed in Sent, and `mail.read_ratings` read both. The README shows how to create the filter.
   - The second run found most feeds unchanged through conditional requests. It added 160 new items, 131 of them from YouTube search, whose window had narrowed from 48 hours to 12. It scored 12 more, none of them twice, and sent a digest of 5.
   - A run started while another held the lock did nothing and exited 0.
   - **An invalid token:**
@@ -990,8 +1032,23 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
   - **The backlog.** After six runs at a cap of 12, 509 items were waiting: 333 from YouTube search, 123 from web search, 31 from feeds and 22 from YouTube channels. The fifth run, a normal one after the one-minute deadline, added 31 new items, and the sixth, with the made-up Gmail account, 41.
   - **Item IDs** reached 14,901 for 3,163 items, because every insert that conflicts still uses up an identity value. With `bigint` IDs that's harmless.
 
+- **Whole texts and checked summaries (REQ-85 to REQ-88), on the Mac, 2026-10-31,** with Opus 5.5 at high effort against the local test database. The SDK's dollar figures are its estimates at API prices; with plan sign-in they count against plan limits.
+  - **Scoring.** An experiment scored 12 items near the threshold twice on the old excerpts and twice on their whole text, 323,000 characters, in one batch each.
+    - The whole text moved one item from 5 to 6, so it passed, in both full-text runs.
+    - Repeating the excerpt run changed no decision; repeating the full-text run changed one item at the threshold.
+    - The first full-text call cost $0.93 and took 22 seconds, against $0.195 and 11 seconds on excerpts.
+  - **Checking summaries.** Three summaries written from the whole text were checked by a second call, which found 4, 4 and 2 problems: merged points, a statement credited to the wrong source, a reworded quote, and claims about what the original contains.
+  - **Run 12**, with `MAX_ITEMS_PER_RUN=24`:
+    - it scored 24 items on their whole text, 10 of which passed;
+    - it sent digest 9, with 8 items: 7 chosen and the wildcard, each summarized;
+    - the check found 1 to 5 unsupported statements in 7 summaries, which were rewritten, and nothing in one;
+    - it took 11 minutes 44 seconds and 34 Claude calls, estimated at $5.21, with about 6½ minutes for the 8 summaries.
+
+    The summaries ran 237–478 words, so the prompts now ask for 4 takeaways of at most about 50 words each. The two longest items, summarized again, came to 362 and 375 words.
+
 Not verified yet:
 
+- whether the summaries save you opening the link in most cases (REQ-86), and whether a day's runs fit the plan's limits;
 - the batch-halving and `assess_failed` path with a real model returning invalid scores; only a stand-in for Claude was used;
 - web search with Opus 5.5, its real plan usage per run, and web search on the Pi;
 - injection through a real search result; only an injected search term was tried;
@@ -1061,11 +1118,12 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
 - **Static database passwords (REQ-62, accepted).** The agent and the Postgres admin sign in with passwords that don't change on their own, kept with the database's TLS key in root-only files and readable by anyone with Docker access on the Pi (ASVS 5.0.0 v5.0.0-13.2.1 and 13.3.1, Level 2). Certificate login was tested and set aside under REQ-58: it needs a CA file, a client certificate and a key owned by the agent's UID on every install, and still leaves a static key. Owner: you. Scope: `POSTGRES_PASSWORD`, `AGENT_DB_PASSWORD` and the database TLS key. Reason: REQ-58, and Docker access on the Pi already equals root. Controls: TLS 1.3 only with `verify-full`, TCP logins for the agent's non-superuser role only, generated passwords, root-only files, and the README's steps to change them, which were checked on the Pi. Review: 2027-10-30. Follow-up: certificate login if the project ever has more than one operator.
 - **A wide credential on the Pi (REQ-14, accepted).** The Pi holds the Claude token, a personal Gmail app password that can also read the mailbox, and a YouTube key. Anyone who can sign in to the Pi can read them. Controls: they live only in root-only files; `settings.take_secrets` removes them from the environment before Claude Code starts; the agent uses IMAP only to read three headers from the Sent folder. Review: at the token renewal, 2027-10-30, and whenever who can sign in to the Pi changes. Follow-up: switch if Google offers a credential limited to sending and reading one folder.
 - **The agent reads your mailbox (REQ-32).** With ratings, it uses that IMAP access every run. It keeps to the Sent folder, read-only, and fetches only three headers of emails with the rating subject from the last 30 days. Anyone who can change the code or the image on the Pi could read more; that was already true of the app password.
-- **Ratings can narrow what you see (REQ-32).** You can only rate what a digest showed you, and in E5 three dislikes pushed a whole topic down. The prompt shows at most 5 likes and 5 dislikes, from the last 60 days, and says the profile decides what is in scope. If a topic you care about disappears, edit `interests.md` or rate an item on it "More like this". The order of a digest may also bias which items you rate; the position is kept in `digest_items` if that needs checking.
+- **Ratings in the wrong database (REQ-69, accepted).** A rating email names only an item's ID, and every database signed in to the same Gmail reads it. A rating sent from a local test digest can be stored on the Pi against an unrelated item with the same ID, if a digest of the Pi's included that item, and after a rebuild of the Pi's database, old ratings from the last 30 days can land on new items. Owner: you. Scope: your own ratings, read from the last 30 days of the Sent folder. Reason: plain links are easier to set up and understand than a per-database token. Controls: a rating counts only for an item a digest addressed to you included; you delete stray rows from `feedback` by hand (README, "Development"). Review: before a second database reads the same Gmail for long. Follow-up: none planned.
+- **Ratings can narrow what you see (REQ-32).** You can only rate what a digest showed you, summarized or listed below the threshold, and in E5 three dislikes pushed a whole topic down. The prompt shows at most 5 likes and 5 dislikes, at most 2 of each per source, from the last 180 days, says a rating is about its item rather than its topic, and says the profile decides what is in scope. The paired scores without ratings (REQ-78) show when a topic falls, and the list of items below the threshold (REQ-89) shows you every item it drops, so rating one "More like this" lets a suppressed topic come back. If a topic you care about disappears, edit `interests.md` or rate an item on it "More like this". The order of a digest may also bias which items you rate; the position is kept in `digest_items` if that needs checking.
 - **YouTube (REQ-15, accepted; F-16).** YouTube's terms forbid automated access, and transcripts come from an unofficial endpoint. Blocks have already happened. Controls: `TRANSCRIPTS_ENABLED` turns them off; a blocked video is scored on its title and description; each request has a 30-second timeout. Review: 2027-10-30. Follow-up: set `TRANSCRIPTS_ENABLED=false` if blocks last a week.
 - **Gmail credential (F-14).** Changing your Google password or turning off 2-Step Verification revokes the app password. Digests then stay unsent in Postgres until it's replaced, and the failure email can't go out either.
 - **Page structure (F-05).** Anthropic has no feed, so the agent depends on its sitemap and page HTML. Breakage shows up as failing or silent sources in the health footer.
-- **Plan usage.** Runs share your subscription's limits with your own Claude use, and usage grows with each newsletter and each web search term. The `runs` table records it.
+- **Plan usage.** Runs share your subscription's limits with your own Claude use, and usage grows with each newsletter and each web search term. The `runs` table records it. With Opus at high effort, a test run of 12 items with 7 web search terms used 9 calls that the SDK estimated at $2.64, about ten times a Haiku run; the title pass, the rescoring and the digest's larger input add to that. Reading whole texts (REQ-85) and checked summaries (REQ-86, REQ-87) raise it further, by your choice of quality over cost: about 5 times the scoring input, and three calls per emailed item. Anthropic's support page says Agent SDK use with a plan sign-in draws on the plan's limits, not a bill; whether a day's runs fit those limits is measured in the first week. If they don't, the levers are Claude Code's shorter cache lifetime (`FORCE_PROMPT_CACHING_5M`, untested), a lower `MAX_ITEMS_PER_RUN`, and fewer items per email.
 - **Web search (REQ-29, accepted).** Search results reach a Claude that has a tool. Section 5 lists what injected text could do. The results' quality depends on Claude's search tool and the prompt; aggregator and release-stub pages got through in testing and were scored low. If `WebSearch` changes, for example by gaining page fetching, the tool check stops the run until the code is reviewed. Controls: `WebSearch` is the only tool, checked fail-closed; Claude's links pass the address checks before they're stored and again when fetched; everything shown is defanged, and email links come only from stored URLs. Review: 2027-10-30, and before every `claude-agent-sdk` upgrade. Follow-up: repeat the injection test of section 14 at each upgrade.
 - **Merging depends on Claude review (REQ-49, REQ-50).** Claude review is a required check, so nothing merges while Claude has findings or can't sign in because the `CLAUDE_CODE_OAUTH_TOKEN` secret is missing or expired. The check fails when Claude lists any blocking problem, and also when any inline comment was posted during the review, so a miscount can't pass a pull request. Since every problem blocks (REQ-64), a review can find something new on each push; your `review-override` label is the only way past it, and the way out of such a loop. It hasn't yet passed on GitHub with its own prompt; watch this pull request and the next ordinary one. Every review draws on your plan's limits.
 - **The repository is public (REQ-50).** Anyone can read the code and these documents, and open issues and pull requests. Keep personal details, the Pi's network and access details, and secrets out of every commit, issue and comment: history is permanent, and GitHub keeps every pull request's commits even after its branch is deleted. Workflows on a stranger's pull request wait for your approval and get no secrets, and `claude.yml` answers only you.
@@ -1085,7 +1143,7 @@ Labels: **Observed**, seen directly; **Documented**, stated by an authoritative 
   - The Gmail app password: replaced when the Google password changes. The YouTube key: replaced in Google Cloud if it's ever exposed.
   - Both Postgres passwords: 48 random hex characters from `openssl rand`, changed with `\password` (README, "Maintenance").
   - The database's TLS key: ECDSA P-256, a self-signed certificate for `DNS:db`, valid 10 years, replaced as the README says or when the key may have been exposed.
-  - In use: TLS 1.3 to Postgres; TLS with certificate checks to every HTTPS host, and to Gmail for SMTP (STARTTLS) and IMAP; SCRAM-SHA-256 for Postgres passwords; and MD5 only to format a random UUID into the feedback token, which isn't a secret.
+  - In use: TLS 1.3 to Postgres; TLS with certificate checks to every HTTPS host, and to Gmail for SMTP (STARTTLS) and IMAP; and SCRAM-SHA-256 for Postgres passwords.
 - **What leaves the Pi.** Requests to the sources and pages it fetches, Google's YouTube API, Gmail's SMTP and IMAP servers, and Anthropic for the Claude calls through Claude Code. `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` turns off Claude Code's usage metrics and error reports, so nothing else goes to Anthropic or a third party.
 - **Security events.** These are logged as warnings or errors in the journal: a blocked address (`web search link dropped`, and `BlockedAddress` in `item_content.error`); Claude Code offering unexpected tools or no `init` message, which is a `ClaudeAuthError` that fails the run and emails you; a database connection without TLS (`InsecureConnection`); a sign-in failure to Gmail or Claude; and a run lock held by a stuck run. Only those that fail a run reach you by email.
 - **Keeping logs.** The journal follows the Pi's own journald limits, which this project doesn't change. The `runs` table keeps one row per run, a few kilobytes a day, and nothing is pruned. Only root and accounts that can use `sudo` can read either.
@@ -1139,7 +1197,7 @@ Advisories that no reviewer graded were done too: the `db` container's capabilit
 | `@claude` read strangers' text in threads you tagged (ARCH-F2, SEC-F2) | Medium | Only your own threads and comments, with a 30-minute limit |
 | A pull request could change its own checks (ADV-F2) | Medium | The Workflow guard check (section 12) |
 | The review plugin and the build backend weren't pinned (ARCH-F3, ADV-F3, SEC-F4) | Medium | Pinned to a commit and to exact versions; the fourth review's pull request later replaced the plugin with the project's own prompt (REQ-64) |
-| Rating emails named items by ID only (ARCH-F1) | Medium | A per-database token in the subject (section 7) |
+| Rating emails named items by ID only (ARCH-F1) | Medium | A per-database token in the subject (section 7), dropped again at your decision on 2026-10-31 (REQ-69) |
 | Every source failing raised no alert (design-pattern review) | Medium | Section 10: a failure email after 3 such runs |
 | The deploy copy kept its own drifting exclude list (SLOP-F1) | Medium | `rsync` follows `.gitignore` |
 | The agent used the Postgres superuser, without TLS (SEC-F3) | Low | Its own role, over verified TLS |
@@ -1193,8 +1251,7 @@ The design-pattern review found no new pattern needed. One light one stays: a di
 - A web interface.
 - Backups. A `pg_dump` is planned once a backup destination exists (section 16).
 - A heartbeat email on quiet days (REQ-16 says no), or any alert channel other than email.
-- The agent changing its own search terms or profile. You edit them in each newsletter's `newsletter.toml` and `interests.md`. Ratings only add examples to the scoring prompt.
-- A monthly email in which Claude suggests profile and search-term edits from your ratings, for you to apply. It's the research's later option, once ratings are in real use.
+- The agent changing its own search terms or profile. You edit them in each newsletter's `newsletter.toml` and `interests.md`. Ratings add examples to the scoring and digest prompts, and the monthly email suggests profile edits for you to apply (REQ-83); it doesn't suggest search terms.
 - A local embedding model and pgvector, as Claude's helper (E6). Deferred, and it would need REQ-05 and REQ-20 relaxed.
 - Other kinds of agents, such as a calendar assistant. Only newsletters are generalized (REQ-25).
 
@@ -1220,9 +1277,9 @@ The design-pattern review found no new pattern needed. One light one stays: a di
 
 1. Prune the seed sources, search terms and interest profile in `config/newsletters/ai/`.
 2. Done on 2026-10-31: the Gmail app password and a YouTube Data API key exist, and both worked on the Mac (section 14). They go into `agent.env` on the Pi when you deploy.
-3. Deploy on the Pi, following the README. That needs your go-ahead, because it enables the timer and sends real email. The Pi still holds a copy from before the rename (REQ-33), in `~/Projects/ai-news-agent`, and its image `ai-news-agent:local`. No containers, volumes, units or secrets were created for it. Deploy through the staging folder `~/Projects/newsletter-agent` to `/opt/newsletter-agent`, then remove the old folder and image.
+3. Deploy on the Pi, following the README's "Deploy on a Linux server". That needs your go-ahead, because it enables the timer and sends real email. The Pi still holds a copy from before the rename (REQ-33), in `~/Projects/ai-news-agent`, and its image `ai-news-agent:local`. No containers, volumes, units or secrets were created for it. Deploy through the staging folder `~/Projects/newsletter-agent` to `/opt/newsletter-agent`, then remove the old folder and image.
 4. Over the first week, measure plan usage per run, including web search, and transcript success. Then tune the models, `SEARCH_MODEL` included, the threshold, the sources and the search terms.
 5. With the first real digest, tap one rating link on your phone and send the email, then confirm the next run's `check` or footer counts it. Clicking a rating link in Apple Mail on the Mac worked; a phone hasn't been tried (section 14).
-6. After a week of real runs, compare the waiting count with what each run fetches, and decide whether old items should age out (section 9).
+6. After a week of real runs, compare the waiting count with what each run fetches, and check that items aging out after 7 days (REQ-74) don't drop ones you'd want (section 9).
 7. Turn on GitHub's "Keep my email addresses private" before the next merge in the browser, and decide the two GitHub settings in section 16.
 8. Add more newsletters, such as hardware, as folders under `config/newsletters/`.

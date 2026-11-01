@@ -194,7 +194,7 @@ def load_settings(
         search_model=environ.get("SEARCH_MODEL") or DEFAULT_MODEL,
         score_batch_size=_int(environ, "SCORE_BATCH_SIZE", 20, low=1, high=50),
         max_items_per_run=_int(environ, "MAX_ITEMS_PER_RUN", 100, low=1),
-        digest_max_items=_int(environ, "DIGEST_MAX_ITEMS", 15, low=1),
+        digest_max_items=_int(environ, "DIGEST_MAX_ITEMS", 8, low=1),
         backfill_days=_int(environ, "BACKFILL_DAYS", 7, low=0),
         youtube_search_max_queries=youtube_cap,
         web_search_max_queries=web_cap,

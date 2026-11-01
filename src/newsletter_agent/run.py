@@ -91,10 +91,13 @@ def _run(settings: Settings) -> int:
             )
             steps.read_ratings(conn, settings, current)
             steps.collect(conn, settings, current)
+            steps.expire(conn, current)
+            steps.triage(conn, settings, current)
             steps.enrich(conn, settings, current)
             steps.assess(conn, settings, current)
             steps.digest(conn, settings, current)
             steps.deliver(conn, settings, current)
+            steps.suggest_profile(conn, settings, current)
             status, error = _outcome(conn, current)
         except Exception as e:
             store.rollback_quietly(conn)

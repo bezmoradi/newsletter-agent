@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 from newsletter_agent.sources import feed
 from newsletter_agent.sources.base import Collected, SourceState, changed, get_if_changed, unchanged
@@ -13,11 +14,13 @@ if TYPE_CHECKING:
     from newsletter_agent.settings import Settings, SourceConfig
 
 FEED_URL = "https://www.youtube.com/feeds/videos.xml"
+SHORTS_PATH = "/shorts/"
 
 
 def collect(
     source: SourceConfig, state: SourceState, settings: Settings, deadline: float
 ) -> Collected:
+    """The channel's latest videos, without its Shorts, which the feed links as /shorts/ URLs."""
     assert source.channel_id is not None
     response = get_if_changed(FEED_URL, state, {"channel_id": source.channel_id})
     if response is None:
@@ -25,6 +28,6 @@ def collect(
     candidates = []
     for candidate in feed.parse(response.body):
         video_id = youtube_video_id(candidate.url)
-        if video_id:
+        if video_id and not urlsplit(candidate.url).path.startswith(SHORTS_PATH):
             candidates.append(replace(candidate, external_id=video_id, url=watch_url(video_id)))
     return changed(response, candidates)

@@ -35,14 +35,25 @@ IMAP_TIMEOUT = 60
 TOKEN_WARNING_DAYS = 30
 MUTED = "color: #59636e;"
 LINK = "color: #0969da;"
+TAG = "font-weight: 600; padding: 1px 8px; border-radius: 10px; white-space: nowrap;"
+SCORE = f"color: #116329; background: #dafbe1; {TAG}"
+BELOW_SCORE_COLORS = (
+    (4, "color: #7d4e00; background: #fff8c5;"),
+    (2, "color: #953800; background: #fff1e5;"),
+    (0, "color: #a40e26; background: #ffebe9;"),
+)
 RATING_HELP = (
     "Each rating link opens an email to yourself with the rating in its subject. Send it, and "
     "the next run reads it from your Sent folder."
 )
 FEEDBACK_SUBJECT = "newsletter-agent feedback"
+BELOW_HEADING = "Scored below your threshold"
+BELOW_NOTE = 'Titles only. "More like this" teaches the scoring; it doesn\'t bring the item back.'
+HIGHLIGHTS_LABEL = "Highlights:"
+NO_SUMMARY_NOTE = "Claude couldn't summarize the full text, so this is why it was picked."
 MAX_FEEDBACK_MESSAGES = 500
 _FEEDBACK_RE = re.compile(
-    rf"^{re.escape(FEEDBACK_SUBJECT)} (more|less) ([1-9][0-9]{{0,17}}) ([0-9a-f]{{12}})$",
+    rf"^{re.escape(FEEDBACK_SUBJECT)} (more|less) ([1-9][0-9]{{0,17}})$",
     re.IGNORECASE,
 )
 _LIST_RE = re.compile(rb'^\((?P<flags>[^)]*)\) (?:NIL|"(?:[^"\\]|\\.)*") (?P<name>.+)$')
@@ -58,15 +69,12 @@ class Email:
 
 @dataclass(frozen=True)
 class Rating:
-    """One "More like this" or "Less like this" email the owner sent. token names the database
-    whose digest the link came from.
-    """
+    """One "More like this" or "Less like this" email the owner sent."""
 
     message_id: str
     item_id: int
     liked: bool
     sent_at: datetime
-    token: str
 
 
 @dataclass(frozen=True)
@@ -79,41 +87,60 @@ class _Item:
     summary: str
     more: str | None
     less: str | None
+    takeaways: tuple[str, ...] = ()
+    highlights: str | None = None
+    note: str | None = None
 
     @property
     def meta(self) -> str:
-        parts = [
-            self.domain,
-            self.source,
-            f"score {self.score}/10" if self.score is not None else None,
-        ]
-        return " · ".join(p for p in parts if p)
+        return _meta(self.domain, self.source, self.score)
+
+
+@dataclass(frozen=True)
+class _Listed:
+    title: str
+    url: str | None
+    domain: str | None
+    source: str
+    score: int | None
+    more: str | None
+
+    @property
+    def meta(self) -> str:
+        return _meta(self.domain, self.source, self.score)
+
+
+def _meta(domain: str | None, source: str, score: int | None) -> str:
+    parts = [domain, source, f"score {score}/10" if score is not None else None]
+    return " · ".join(p for p in parts if p)
 
 
 def render_digest(
     *,
     name: str,
-    intro: str | None,
     entries: list[dict[str, Any]],
-    summaries: dict[int, str],
+    listed: list[dict[str, Any]],
+    summaries: dict[int, Any],
     source_names: dict[str, str],
     fallback: bool,
     health: dict[str, Any] | None,
     feedback_to: str | None,
-    feedback_token: str,
     token_days_left: int,
     today: date,
 ) -> Email:
-    """Build the digest email. Every title, summary and the intro go through text.defang, every
-    HTML value is escaped, and links come only from stored item URLs, plus, when feedback_to is
-    set, the rating links built by feedback_link. With health set to None, the email has no health
-    footer and no token warning.
+    """Build the digest email. A summary is Claude's gist, takeaways and highlights; an
+    item without one shows its score reason and a note saying so. Every title, summary part and
+    reason goes through text.defang, every HTML value is escaped, and links come only from stored
+    item URLs, plus, when feedback_to is set, the rating links built by feedback_link. The listed
+    items, scored below the threshold, follow by title, each with a "More like this" link when
+    feedback_to is set. With health set to None, the email has no health footer and no token
+    warning.
     """
 
     def rating(item_id: int, *, liked: bool) -> str | None:
         if not feedback_to:
             return None
-        return feedback_link(feedback_to, item_id, feedback_token, liked=liked)
+        return feedback_link(feedback_to, item_id, liked=liked)
 
     items = [
         _Item(
@@ -122,22 +149,31 @@ def render_digest(
             domain=domain(entry["url"]) if is_web_url(entry["url"]) else None,
             source=source_names.get(entry["source_key"], entry["source_key"]),
             score=entry["score"],
-            summary=defang(summaries.get(entry["id"]) or entry["reason"] or ""),
             more=rating(entry["id"], liked=True),
             less=rating(entry["id"], liked=False),
+            **_summary_parts(summaries.get(entry["id"]), entry["reason"]),
         )
         for entry in entries
     ]
+    below = [
+        _Listed(
+            title=defang(row["title"] or "(no title)"),
+            url=row["url"] if is_web_url(row["url"]) else None,
+            domain=domain(row["url"]) if is_web_url(row["url"]) else None,
+            source=source_names.get(row["source_key"], row["source_key"]),
+            score=row["score"],
+            more=rating(row["id"], liked=True),
+        )
+        for row in listed
+    ]
     opening = (
-        "Claude couldn't write today's summaries, so each item shows the reason it was picked."
+        "Claude couldn't choose today's set, so these are the highest-scored items."
         if fallback
-        else defang(intro)
-        if intro
         else None
     )
     warning = (
         f"The Claude token expires in {token_days_left} days. Run `claude setup-token` and "
-        "replace CLAUDE_CODE_OAUTH_TOKEN on the Pi."
+        "replace CLAUDE_CODE_OAUTH_TOKEN where the agent runs."
         if health is not None and token_days_left <= TOKEN_WARNING_DAYS
         else None
     )
@@ -148,16 +184,54 @@ def render_digest(
     count = len(items)
     return Email(
         subject=f"{name}: {count} item{'' if count == 1 else 's'} ({today:%Y-%m-%d})",
-        text=_text(heading, warning, opening, items, footer),
-        html=_html(heading, warning, opening, items, footer),
+        text=_text(heading, warning, opening, items, below, footer),
+        html=_html(heading, warning, opening, items, below, footer),
     )
 
 
-def feedback_link(address: str, item_id: int, token: str, *, liked: bool) -> str:
-    """A mailto: link that opens an email to address whose subject rates the item. The token
-    names the database, so a rating from another database's digest is never stored here.
+def _summary_parts(summary: Any, reason: str | None) -> dict[str, Any]:
+    if isinstance(summary, dict) and isinstance(summary.get("gist"), str):
+        takeaways = summary.get("takeaways")
+        highlights = summary.get("highlights")
+        return {
+            "summary": defang(summary["gist"]),
+            "takeaways": tuple(
+                defang(t) for t in (takeaways if isinstance(takeaways, list) else []) if t
+            ),
+            "highlights": defang(highlights)
+            if isinstance(highlights, str) and highlights
+            else None,
+        }
+    if isinstance(summary, str) and summary:
+        return {"summary": defang(summary)}
+    return {"summary": defang(reason or ""), "note": NO_SUMMARY_NOTE}
+
+
+def render_profile_suggestions(
+    name: str, suggestions: list[dict[str, str]], ratings: int, today: date
+) -> Email:
+    """A plain-text email of Claude's suggested edits to a newsletter's interest profile, every
+    suggestion passed through text.defang. With no suggestions, it says the ratings agree with
+    the profile.
     """
-    subject = f"{FEEDBACK_SUBJECT} {'more' if liked else 'less'} {item_id} {token}"
+    lines = [
+        f"Claude read your latest {ratings} ratings of {name} and suggests these changes to its "
+        "interests.md. Nothing changes until you edit the file in the repository and deploy it.",
+        "",
+    ]
+    for n, s in enumerate(suggestions, 1):
+        lines += [f"{n}. {defang(s['change'])}", f"   Why: {defang(s['why'])}", ""]
+    if not suggestions:
+        lines += ["Your ratings agree with the profile, so there's nothing to change.", ""]
+    return Email(
+        subject=f"{name}: suggested profile changes ({today:%Y-%m-%d})",
+        text="\n".join(lines).rstrip() + "\n",
+    )
+
+
+def feedback_link(address: str, item_id: int, *, liked: bool) -> str:
+    """A mailto: link that opens an email to address whose subject rates the item."""
+    subject = f"{FEEDBACK_SUBJECT} {'more' if liked else 'less'} {item_id}"
     return f"mailto:{quote(address, safe='@')}?subject={quote(subject, safe='')}"
 
 
@@ -191,7 +265,12 @@ def _health_lines(health: dict[str, Any], token_days_left: int) -> list[str]:
 
 
 def _text(
-    heading: str, warning: str | None, opening: str | None, items: list[_Item], footer: list[str]
+    heading: str,
+    warning: str | None,
+    opening: str | None,
+    items: list[_Item],
+    below: list[_Listed],
+    footer: list[str],
 ) -> str:
     out = []
     if warning:
@@ -200,15 +279,39 @@ def _text(
     if opening:
         out += [opening, ""]
     for n, item in enumerate(items, 1):
-        out += [f"{n}. {item.title}", f"   {item.meta}", f"   {item.summary}"]
-        if item.url:
-            out.append(f"   {item.url}")
-        if item.more and item.less:
-            out += [f"   More like this: {item.more}", f"   Less like this: {item.less}"]
-        out.append("")
+        out += _item_text(n, item)
+    out += _below_text(below)
     if footer:
         out += ["--", *footer]
     return "\n".join(out).rstrip() + "\n"
+
+
+def _item_text(n: int, item: _Item) -> list[str]:
+    out = [f"{n}. {item.title}", f"   {item.meta}"]
+    if item.highlights:
+        out.append(f"   {HIGHLIGHTS_LABEL} {item.highlights}")
+    out.append(f"   {item.summary}")
+    out += [f"   - {point}" for point in item.takeaways]
+    if item.note:
+        out.append(f"   ({item.note})")
+    if item.url:
+        out.append(f"   {item.url}")
+    if item.more and item.less:
+        out += [f"   More like this: {item.more}", f"   Less like this: {item.less}"]
+    return [*out, ""]
+
+
+def _below_text(below: list[_Listed]) -> list[str]:
+    if not below:
+        return []
+    out = [BELOW_HEADING, BELOW_NOTE]
+    for item in below:
+        out += [f"- {item.title}", f"  {item.meta}"]
+        if item.url:
+            out.append(f"  {item.url}")
+        if item.more:
+            out.append(f"  More like this: {item.more}")
+    return [*out, ""]
 
 
 def _html(
@@ -216,6 +319,7 @@ def _html(
     warning: str | None,
     opening: str | None,
     items: list[_Item],
+    below: list[_Listed],
     footer: list[str],
 ) -> str:
     out = [
@@ -225,7 +329,8 @@ def _html(
         '<meta name="supported-color-schemes" content="light">',
         f"<title>{escape(heading)}</title></head>",
         '<body style="font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; '
-        "max-width: 640px; margin: 0 auto; padding: 16px; color: #1f2328; background: #fff; "
+        "max-width: 760px; font-size: 28px; margin: 0 auto; padding: 16px; color: #1f2328; "
+        "background: #fff; "
         'line-height: 1.5; overflow-wrap: anywhere; word-break: break-word;">',
     ]
     if warning:
@@ -234,40 +339,97 @@ def _html(
             '<p style="background: #fff8c5; border: 1px solid #d4a72c; padding: 8px 12px;">'
             f"<strong>{banner}</strong></p>"
         )
-    out.append(f'<h1 style="font-size: 20px;">{escape(heading)}</h1>')
+    out.append(f'<h1 style="font-size: 36px;">{escape(heading)}</h1>')
     if opening:
         out.append(f"<p>{escape(opening)}</p>")
     for n, item in enumerate(items, 1):
+        out += _item_html(n, item)
+    out += _below_html(below)
+    if footer:
+        out.append('<hr style="border: none; border-top: 1px solid #d1d9e0; margin: 24px 0 12px;">')
+    out += [
+        f'<p style="margin: 4px 0; font-size: 21px; {MUTED}">{escape(line)}</p>' for line in footer
+    ]
+    out.append("</body></html>")
+    return "\n".join(out)
+
+
+def _item_html(n: int, item: _Item) -> list[str]:
+    title = escape(item.title)
+    if item.url:
+        title = (
+            f'<a href="{escape(item.url, quote=True)}" '
+            f'style="{LINK} text-decoration: none;">{title}</a>'
+        )
+    meta = _meta_html(item.domain, item.source, item.score, SCORE)
+    out = [
+        '<div style="margin: 32px 0;">',
+        f'<h2 style="margin: 0; font-size: 28px; font-weight: 600;">{n}. {title}</h2>',
+        f'<p style="margin: 2px 0; font-size: 24px; {MUTED}">{meta}</p>',
+    ]
+    if item.highlights:
+        out.append(
+            f'<p style="margin: 8px 0 0; font-size: 24px; {MUTED}">'
+            f"<strong>{HIGHLIGHTS_LABEL}</strong> {escape(item.highlights)}</p>"
+        )
+    out.append(f'<p style="margin: 8px 0 0;">{escape(item.summary)}</p>')
+    if item.takeaways:
+        out.append('<ul style="margin: 8px 0 0; padding-left: 32px;">')
+        out += [f'<li style="margin: 6px 0;">{escape(point)}</li>' for point in item.takeaways]
+        out.append("</ul>")
+    if item.note:
+        out.append(f'<p style="margin: 8px 0 0; font-size: 24px; {MUTED}">{escape(item.note)}</p>')
+    if item.more and item.less:
+        link = (
+            f'style="{LINK} text-decoration: underline; display: inline-block; '
+            'padding: 8px 0; margin-right: 24px;"'
+        )
+        out.append(
+            '<p style="margin: 0; font-size: 26px;">'
+            f'<a href="{escape(item.more, quote=True)}" {link}>More like this</a>'
+            f'<a href="{escape(item.less, quote=True)}" {link}>Less like this</a></p>'
+        )
+    return [*out, "</div>"]
+
+
+def _below_html(below: list[_Listed]) -> list[str]:
+    if not below:
+        return []
+    out = [
+        f'<h2 style="margin: 40px 0 4px; font-size: 28px; font-weight: 600;">{BELOW_HEADING}</h2>',
+        f'<p style="margin: 0; font-size: 24px; {MUTED}">{escape(BELOW_NOTE)}</p>',
+        '<ul style="margin: 8px 0 0; padding-left: 32px;">',
+    ]
+    for item in below:
         title = escape(item.title)
         if item.url:
             title = (
                 f'<a href="{escape(item.url, quote=True)}" '
                 f'style="{LINK} text-decoration: none;">{title}</a>'
             )
-        out += [
-            '<div style="margin: 20px 0;">',
-            f'<h2 style="margin: 0; font-size: 16px; font-weight: 600;">{n}. {title}</h2>',
-            f'<p style="margin: 2px 0; font-size: 13px; {MUTED}">{escape(item.meta)}</p>',
-            f'<p style="margin: 4px 0 0;">{escape(item.summary)}</p>',
-        ]
-        if item.more and item.less:
-            link = (
-                f'style="{LINK} text-decoration: underline; display: inline-block; '
-                'padding: 8px 0; margin-right: 24px;"'
+        meta = _meta_html(item.domain, item.source, item.score, _below_score(item.score))
+        line = f'<span style="font-size: 24px; {MUTED}">{meta}</span>'
+        if item.more:
+            line += (
+                f' <a href="{escape(item.more, quote=True)}" style="{LINK} font-size: 18px; '
+                'text-decoration: underline; display: inline-block; padding: 4px 0 4px 12px;">'
+                "More like this</a>"
             )
-            out.append(
-                '<p style="margin: 0; font-size: 15px;">'
-                f'<a href="{escape(item.more, quote=True)}" {link}>More like this</a>'
-                f'<a href="{escape(item.less, quote=True)}" {link}>Less like this</a></p>'
-            )
-        out.append("</div>")
-    if footer:
-        out.append('<hr style="border: none; border-top: 1px solid #d1d9e0; margin: 24px 0 12px;">')
-    out += [
-        f'<p style="margin: 4px 0; font-size: 12px; {MUTED}">{escape(line)}</p>' for line in footer
-    ]
-    out.append("</body></html>")
-    return "\n".join(out)
+        out.append(f'<li style="margin: 12px 0;">{title}<br>{line}</li>')
+    return [*out, "</ul>"]
+
+
+def _below_score(score: int | None) -> str:
+    colors = next(c for low, c in BELOW_SCORE_COLORS if score is None or score >= low)
+    return f"{colors} {TAG}"
+
+
+def _meta_html(domain: str | None, source: str, score: int | None, style: str) -> str:
+    meta = escape(" · ".join(part for part in (domain, source) if part))
+    if score is not None:
+        tag = f'<span style="{style}">score {score}/10</span>'
+        meta = f"{meta} · {tag}" if meta else tag
+    return meta
 
 
 def render_failure(reason: str, today: date) -> Email:
@@ -398,5 +560,4 @@ def _rating(headers: Any) -> Rating | None:
         item_id=int(match[2]),
         liked=match[1].lower() == "more",
         sent_at=sent_at if sent_at.tzinfo else sent_at.replace(tzinfo=UTC),
-        token=match[3].lower(),
     )
