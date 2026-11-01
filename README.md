@@ -20,7 +20,7 @@ A personal agent that runs once a day in Docker. It runs one or more **newslette
 - A newsletter with nothing new sends no email.
 - A run that fails sends a short failure email, to you only.
 - Only digests addressed to you carry the health footer: run counts, failing sources, your ratings and the Claude token countdown.
-- Only digests addressed to you have "More like this" and "Less like this" links on each item. Each run reads the emails those links create from your Gmail Sent folder, and scoring uses your recent ratings as examples of your taste. See "Rating items" below.
+- Only digests addressed to you have "More like this" and "Less like this" links on each item, and end with a list of the items scored below your threshold, each with a "More like this" link. Each run reads the emails those links create from your Gmail Sent folder, and scoring uses your recent ratings as examples of your taste. See "Rating items" below.
 - Claude reads text and returns JSON. It gets no tools, except its web search tool in the web search step. [ARCHITECTURE.md](ARCHITECTURE.md) is the source of truth for requirements, decisions and design.
 
 ## Table of Contents
@@ -115,7 +115,7 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `YOUTUBE_API_KEY` | required with a `youtube_search` source | The YouTube Data API key; see [YouTube Data API key](#youtube-data-api-key) |
 | `SCORE_MODEL`, `DIGEST_MODEL`, `SEARCH_MODEL` | `claude-opus-5-5` | The Claude model for scoring, the digest and web search. Every Claude call runs at high effort |
 | `SCORE_THRESHOLD` | `6` | The lowest score, out of 10, that goes in a digest, unless a newsletter sets its own |
-| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting. Items still waiting after 7 days are dropped from the queue; `backfill` can queue them again |
+| `MAX_ITEMS_PER_RUN` | `100` | The most items fetched, and the most scored, in one run across all newsletters, shared evenly between them. Within a newsletter, items are taken one source at a time, each source's most promising first, by a quick score of its title, then newest first, so a busy source can't crowd out the others. The rest wait for the next run, and your footer shows how many are waiting. Items still waiting after 7 days are dropped from the queue; `backfill` can queue them again |
 | `DIGEST_MAX_ITEMS` | `8` | The most items in one email. No source fills more than 3 of them |
 | `SCORE_BATCH_SIZE` | `20` | The most items per scoring call. A call also holds at most 200,000 characters of text, and a longer item gets a call of its own |
 | `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new |
@@ -290,7 +290,7 @@ Run these from the repository folder, with `NEWSLETTER_AGENT_ENV_DIR` set as in 
 - It exits 2 when it failed and sent the failure email.
 - It exits 1 when it failed and couldn't send one, or when it was still running 15 minutes past `RUN_DEADLINE_MINUTES` and stopped itself. On a Linux server, systemd then starts `newsletter-agent-failure.service`, which tries again; elsewhere, the command of [Run it with Docker](#run-it-with-docker), step 5, does.
 
-**Rating items.** Under each item in your own digests are two links, "More like this" and "Less like this". Tapping one opens an email to yourself with a subject such as `newsletter-agent feedback more 1234`, where 1234 is the item's number; send it as it is. The next run reads it from your Sent folder and stores the rating:
+**Rating items.** Under each item in your own digests are two links, "More like this" and "Less like this", and each item in the list below your threshold has a small "More like this" link. Tapping one opens an email to yourself with a subject such as `newsletter-agent feedback more 1234`, where 1234 is the item's number; send it as it is. The next run reads it from your Sent folder and stores the rating:
 - Scoring and the digest then show Claude up to 5 of your likes and 5 dislikes from the last 180 days, at most 2 of each from one source, as examples that refine the newsletter's `interests.md`. The profile still decides what's in scope, and a dislike counts against that item, not its whole topic.
 - Your footer counts your ratings by source, which helps decide which sources to keep. If ratings couldn't be read, the footer says why, and the run still goes on.
 - Once at least 20 new ratings exist, and at most once every 30 days, you get an email with Claude's suggested edits to `interests.md`. Nothing changes until you edit the file in the repository and deploy it.

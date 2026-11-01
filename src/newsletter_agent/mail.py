@@ -439,7 +439,7 @@ def render_failure(reason: str, today: date) -> Email:
             "",
             f"Reason: {defang(reason)}",
             "",
-            "On the Pi, see the log with:",
+            "On a Linux server set up as in the README, see the log with:",
             "  sudo journalctl -u newsletter-agent --since today",
             "",
             "and the latest runs with:",
