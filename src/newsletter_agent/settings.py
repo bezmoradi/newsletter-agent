@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from newsletter_agent.urls import is_channel_id
+
 SECRET_VARS = (
     "DATABASE_URL",
     "SMTP_USERNAME",
@@ -21,7 +23,11 @@ SECRET_VARS = (
     "YOUTUBE_API_KEY",
     "POSTGRES_PASSWORD",
     "AGENT_DB_PASSWORD",
+    "YOUTUBE_OAUTH_CLIENT_ID",
+    "YOUTUBE_OAUTH_CLIENT_SECRET",
+    "YOUTUBE_OAUTH_REFRESH_TOKEN",
 )
+YOUTUBE_ACCOUNT_VARS = SECRET_VARS[-3:]
 RECIPIENT_PREFIX = "DIGEST_TO_"
 TOKEN_LIFETIME_DAYS = 365
 MAX_WAIT_DAYS = 7
@@ -30,8 +36,8 @@ NEWSLETTERS_DIR = "newsletters"
 NEWSLETTER_FILE = "newsletter.toml"
 INTERESTS_FILE = "interests.md"
 _KEY_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_CHANNEL_RE = re.compile(r"^UC[A-Za-z0-9_-]{22}$")
-SOURCE_TYPES = ("feed", "sitemap", "youtube", "youtube_search", "web_search")
+SOURCE_TYPES = ("feed", "sitemap", "youtube", "youtube_search", "web_search", "youtube_likes")
+RATING_TYPES = ("youtube_likes",)
 SEARCH_TYPES = ("youtube_search", "web_search")
 FILTERED_TYPES = ("feed", "sitemap")
 REVISION_VAR = "NEWSLETTER_AGENT_REVISION"
@@ -89,10 +95,22 @@ class MailSettings:
 
 
 @dataclass(frozen=True)
+class YouTubeAccount:
+    """The owner's sign-in for reading their YouTube likes: a desktop OAuth client and the
+    refresh token that `authorize-youtube` saved.
+    """
+
+    client_id: str = field(repr=False)
+    client_secret: str = field(repr=False)
+    refresh_token: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class Settings:
     database_url: str = field(repr=False)
     mail: MailSettings
     youtube_api_key: str | None = field(repr=False)
+    youtube_account: YouTubeAccount | None = field(repr=False)
     score_model: str
     digest_model: str
     search_model: str
@@ -185,11 +203,15 @@ def load_settings(
         raise ConfigError(
             "YOUTUBE_API_KEY is not set, and a newsletter has a youtube_search source"
         )
+    account = _youtube_account(secrets)
+    for newsletter in newsletters:
+        _check_likes(newsletter, account, mail.smtp_username)
 
     return Settings(
         database_url=_require(secrets, "DATABASE_URL"),
         mail=mail,
         youtube_api_key=youtube_key,
+        youtube_account=account,
         score_model=environ.get("SCORE_MODEL") or DEFAULT_MODEL,
         digest_model=environ.get("DIGEST_MODEL") or DEFAULT_MODEL,
         search_model=environ.get("SEARCH_MODEL") or DEFAULT_MODEL,
@@ -274,9 +296,7 @@ def _parse_sources(entries: Any, path: Path) -> tuple[SourceConfig, ...]:
             isinstance(url, str) and urlsplit(url).scheme in ("http", "https")
         ):
             raise ConfigError(f"{where}: 'url' must be an http or https URL")
-        if kind == "youtube" and not (
-            isinstance(channel_id, str) and _CHANNEL_RE.match(channel_id)
-        ):
+        if kind == "youtube" and not is_channel_id(channel_id):
             raise ConfigError(f"{where}: 'channel_id' must be UC followed by 22 characters")
         if kind in SEARCH_TYPES and (
             not isinstance(queries, list)
@@ -313,6 +333,35 @@ def _parse_sources(entries: Any, path: Path) -> tuple[SourceConfig, ...]:
             )
         )
     return tuple(result)
+
+
+def _youtube_account(secrets: dict[str, str | None]) -> YouTubeAccount | None:
+    values = [secrets.get(name) for name in YOUTUBE_ACCOUNT_VARS]
+    if not any(values):
+        return None
+    if not all(values):
+        raise ConfigError(f"set all of {', '.join(YOUTUBE_ACCOUNT_VARS)}, or none of them")
+    client_id, client_secret, refresh_token = (str(v) for v in values)
+    return YouTubeAccount(client_id, client_secret, refresh_token)
+
+
+def _check_likes(newsletter: NewsletterConfig, account: YouTubeAccount | None, owner: str) -> None:
+    likes = [s for s in newsletter.sources if s.type in RATING_TYPES]
+    if not likes:
+        return
+    where = f"newsletter '{newsletter.key}'"
+    if len(likes) > 1:
+        raise ConfigError(f"{where} has more than one youtube_likes source")
+    if newsletter.recipient.casefold() != owner.casefold():
+        raise ConfigError(
+            f"{where} has a youtube_likes source, but likes are SMTP_USERNAME's own taste, so "
+            "only a newsletter sent to SMTP_USERNAME may use them"
+        )
+    if account is None:
+        raise ConfigError(
+            f"{where} has a youtube_likes source, but {', '.join(YOUTUBE_ACCOUNT_VARS)} "
+            "aren't set; run authorize-youtube"
+        )
 
 
 def _require(secrets: dict[str, str | None], name: str) -> str:

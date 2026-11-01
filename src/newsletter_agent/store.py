@@ -19,6 +19,9 @@ from newsletter_agent.text import storable
 
 LOCK_KEY = 7_311_002
 BELOW_THRESHOLD = "below_threshold"
+SOURCE_CAP = "source_cap"
+CAP = "cap"
+LIKE_PREFIX = "youtube-like:"
 Row = dict[str, Any]
 Connection = psycopg.Connection[Row]
 
@@ -243,8 +246,8 @@ def insert_item(
     """
     row = conn.execute(
         "insert into items (newsletter, source_id, external_id, url, canonical_url, title, "
-        "published_at, summary, state, search_terms) "
-        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) on conflict do nothing returning id",
+        "published_at, summary, state, search_terms, publisher) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) on conflict do nothing returning id",
         (
             newsletter,
             source_id,
@@ -256,6 +259,7 @@ def insert_item(
             _safe(item.summary),
             state,
             [_safe(term) for term in item.search_terms] or None,
+            _safe(item.publisher),
         ),
     ).fetchone()
     return row is not None
@@ -433,12 +437,13 @@ def record_assess_failure(conn: Connection, item_id: int, max_attempts: int) -> 
 
 
 def digest_candidates(
-    conn: Connection, newsletter: str, source_keys: list[str], threshold: int
+    conn: Connection, newsletter: str, source_keys: list[str], threshold: int, retry_days: int
 ) -> list[Row]:
-    """A newsletter's assessed items of the sources in source_keys, at or above threshold, that
-    were never offered to a digest, best first.
+    """A newsletter's assessed items of the sources in source_keys, at or above threshold, best
+    first, that were never offered to a digest, or were left out of one only by a cap (SOURCE_CAP
+    or CAP) and were scored less than retry_days days ago.
     """
-    return _scored(conn, newsletter, source_keys, threshold, 11)
+    return _scored(conn, newsletter, source_keys, threshold, 11, retry_days)
 
 
 def below_threshold(
@@ -450,25 +455,37 @@ def below_threshold(
     profile excludes, so it isn't listed.
     """
     since = datetime.now(UTC) - timedelta(days=days)
-    rows = _scored(conn, newsletter, source_keys, 1, threshold)
+    rows = _scored(conn, newsletter, source_keys, 1, threshold, 0)
     return [row for row in rows if row["scored_at"] >= since]
 
 
 def _scored(
-    conn: Connection, newsletter: str, source_keys: list[str], low: int, high: int
+    conn: Connection,
+    newsletter: str,
+    source_keys: list[str],
+    low: int,
+    high: int,
+    retry_days: int,
 ) -> list[Row]:
+    """Assessed items whose latest score is from low to below high, that the owner hasn't liked
+    on YouTube, and that no digest has offered or listed for good: an item left out only by a cap
+    counts as not offered until retry_days days after its score.
+    """
     return conn.execute(
         "select * from (select distinct on (i.id) i.id, i.url, i.title, i.summary, "
-        "i.published_at, s.key as source_key, a.score, a.reason, a.created_at as scored_at, "
-        "left(c.text, 1500) as text from items i "
+        "i.published_at, i.publisher, s.key as source_key, a.score, a.reason, "
+        "a.created_at as scored_at, left(c.text, 1500) as text from items i "
         "join sources s on s.id = i.source_id join assessments a on a.item_id = i.id "
         "left join item_content c on c.item_id = i.id "
-        "left join digest_items d on d.item_id = i.id "
         "where i.newsletter = %s and s.key = any(%s) and i.state = 'assessed' "
-        "and d.item_id is null "
+        "and not exists (select 1 from feedback f where f.item_id = i.id "
+        "and starts_with(f.message_id, %s)) "
+        "and not exists (select 1 from digest_items d where d.item_id = i.id "
+        "and (d.included or d.reason is null or d.reason <> all(%s) "
+        "or a.created_at < now() - make_interval(days => %s))) "
         "order by i.id, a.created_at desc) latest where score >= %s and score < %s "
         "order by score desc, published_at desc nulls last",
-        (newsletter, source_keys, low, high),
+        (newsletter, source_keys, LIKE_PREFIX, [SOURCE_CAP, CAP], retry_days, low, high),
     ).fetchall()
 
 
@@ -509,7 +526,8 @@ def create_digest(
 ) -> int:
     """Store a digest and every item offered to it: each included item with its position, each
     left out with position -1 and the reason it was left out, and each item listed below the
-    threshold with its place in the list and the reason BELOW_THRESHOLD.
+    threshold with its place in the list and the reason BELOW_THRESHOLD. An item offered again
+    after a cap left it out keeps one row, which records its latest offer.
     """
     row = conn.execute(
         "insert into digests (run_id, newsletter, body_json, model, prompt_version, fallback, "
@@ -521,8 +539,11 @@ def create_digest(
     for item_id, position, included, reason in entries:
         conn.execute(
             "insert into digest_items (digest_id, item_id, position, included, reason) "
-            "values (%s, %s, %s, %s, %s)",
-            (digest_id, item_id, position, included, reason),
+            "values (%s, %s, %s, %s, %s) on conflict (item_id) do update set "
+            "digest_id = excluded.digest_id, position = excluded.position, "
+            "included = excluded.included, reason = excluded.reason "
+            "where digest_items.reason = any(%s)",
+            (digest_id, item_id, position, included, reason, [SOURCE_CAP, CAP]),
         )
     return digest_id
 
@@ -593,26 +614,104 @@ def save_rating(conn: Connection, rating: Rating, newsletters: list[str]) -> boo
     return row is not None
 
 
+def liked_item(
+    conn: Connection, newsletter: str, source_id: int, video: Candidate, canonical: str
+) -> int:
+    """The ID of the item for a liked video: the item a source already stored for its URL in this
+    newsletter, or else a new item of the likes source, stored as baseline, so it is never
+    fetched, scored or offered.
+    """
+    conn.execute(
+        "insert into items (newsletter, source_id, external_id, url, canonical_url, title, "
+        "published_at, summary, state, publisher) "
+        "values (%s, %s, %s, %s, %s, %s, %s, %s, 'baseline', %s) on conflict do nothing",
+        (
+            newsletter,
+            source_id,
+            _safe(video.external_id),
+            _safe(video.url),
+            _safe(canonical),
+            _safe(video.title),
+            video.published_at,
+            _safe(video.summary),
+            _safe(video.publisher),
+        ),
+    )
+    row = conn.execute(
+        "select id from items where newsletter = %s and canonical_url = %s",
+        (newsletter, _safe(canonical)),
+    ).fetchone()
+    assert row is not None
+    return int(row["id"])
+
+
+def item_scores(conn: Connection, item_ids: list[int]) -> dict[int, int | None]:
+    """Each item's latest score, or else its title score, or None when it has neither."""
+    rows = conn.execute(
+        "select i.id, coalesce((select a.score from assessments a where a.item_id = i.id "
+        "order by a.created_at desc limit 1), i.title_score) as score from items i "
+        "where i.id = any(%s)",
+        (item_ids,),
+    ).fetchall()
+    return {int(r["id"]): r["score"] for r in rows}
+
+
+def save_like(conn: Connection, item_id: int, video_id: str, liked_at: datetime) -> bool:
+    """Store a YouTube like as a "More like this" rating of the item, once per video; True when
+    a row was added.
+    """
+    row = conn.execute(
+        "insert into feedback (message_id, item_id, liked, sent_at) values (%s, %s, true, %s) "
+        "on conflict (message_id) do nothing returning id",
+        (LIKE_PREFIX + video_id, item_id, liked_at),
+    ).fetchone()
+    return row is not None
+
+
 def recent_ratings(
     conn: Connection, newsletter: str, days: int, per_source: int, per_side: int
 ) -> list[Row]:
     """A newsletter's latest rating of each item rated in the last `days` days, newest first: at
-    most per_source liked and per_source disliked items from one source, and per_side of each in
-    all, so one burst of ratings can't fill the list. Each row has its feedback id, title, liking
-    and source key.
+    most per_source liked and per_source disliked items from one source, or from one publisher of
+    a search source, and per_side of each in all, so one burst of ratings can't fill the list.
+    Each row has its feedback id, item id, title, liking, source key and what the item was about.
     """
-    return conn.execute(
-        "select id, title, liked, source_key from (select id, title, liked, source_key, sent_at, "
-        "row_number() over (partition by liked order by sent_at desc) as n from (select *, "
-        "row_number() over (partition by liked, source_key order by sent_at desc) as per_source "
-        "from (select distinct on (f.item_id) f.id, i.title, f.liked, f.sent_at, "
-        "s.key as source_key from feedback f join items i on i.id = f.item_id "
+    rows = conn.execute(
+        "select id, item_id, title, liked, source_key from (select id, item_id, title, liked, "
+        "source_key, sent_at, row_number() over (partition by liked order by sent_at desc) as n "
+        "from (select *, row_number() over (partition by liked, source_key, "
+        "coalesce(publisher, '') order by sent_at desc) as per_source "
+        "from (select distinct on (f.item_id) f.id, f.item_id, i.title, f.liked, f.sent_at, "
+        "i.publisher, s.key as source_key from feedback f join items i on i.id = f.item_id "
         "join sources s on s.id = i.source_id where i.newsletter = %s and i.title is not null "
         "and f.sent_at >= now() - make_interval(days => %s) "
         "order by f.item_id, f.sent_at desc) latest) by_source where per_source <= %s) ranked "
         "where n <= %s order by liked desc, sent_at desc",
         (newsletter, days, per_source, per_side),
     ).fetchall()
+    return _with_about(conn, rows)
+
+
+def _with_about(conn: Connection, rows: list[Row]) -> list[Row]:
+    """The rows, each with `about`: the gist the latest digest that included its item showed, or
+    else the item's latest score reason, or else its description, such as a liked video's, or
+    None.
+    """
+    if not rows:
+        return rows
+    found = conn.execute(
+        "select i.id, coalesce((select e.value -> 'summary' ->> 'gist' from digest_items d "
+        "join digests g on g.id = d.digest_id "
+        "cross join lateral jsonb_array_elements(g.body_json -> 'items') e "
+        "where d.item_id = i.id and d.included and e.value ->> 'item_id' = i.id::text "
+        "and e.value -> 'summary' ->> 'gist' is not null order by g.id desc limit 1), "
+        "(select a.reason from assessments a where a.item_id = i.id "
+        "order by a.created_at desc limit 1), left(i.summary, 1000)) as about "
+        "from items i where i.id = any(%s)",
+        ([row["item_id"] for row in rows],),
+    ).fetchall()
+    about = {row["id"]: row["about"] for row in found}
+    return [{**row, "about": about.get(row["item_id"])} for row in rows]
 
 
 def health(conn: Connection, newsletter: str, source_keys: list[str]) -> Row:
@@ -696,16 +795,18 @@ def ratings_since(
     conn: Connection, newsletter: str, since: datetime | None, limit: int
 ) -> list[Row]:
     """A newsletter's latest rating of each item, among ratings stored after `since`, or all when
-    it's None, newest first, with the item's title and source key.
+    it's None, newest first, with the item's title, source key and what it was about.
     """
-    return conn.execute(
-        "select title, liked, source_key from (select distinct on (f.item_id) i.title, f.liked, "
-        "f.sent_at, s.key as source_key from feedback f join items i on i.id = f.item_id "
+    rows = conn.execute(
+        "select item_id, title, liked, source_key from (select distinct on (f.item_id) "
+        "f.item_id, i.title, f.liked, f.sent_at, s.key as source_key from feedback f "
+        "join items i on i.id = f.item_id "
         "join sources s on s.id = i.source_id where i.newsletter = %s and i.title is not null "
         "and (%s::timestamptz is null or f.read_at > %s) "
         "order by f.item_id, f.sent_at desc) latest order by sent_at desc limit %s",
         (newsletter, since, since, limit),
     ).fetchall()
+    return _with_about(conn, rows)
 
 
 def save_profile_suggestion(

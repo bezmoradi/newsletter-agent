@@ -89,6 +89,8 @@ ignore_names = [
     "redirect_request",
     "https_open",
     "_create_connection",
+    "do_GET",
+    "log_message",
 ]
 
 [tool.deptry]

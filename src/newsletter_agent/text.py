@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import unicodedata
 from typing import Any
 
 _TAG = re.compile(r"<[^>]+>")
@@ -14,6 +15,7 @@ _BARE_IP = re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b")
 _DOTS = str.maketrans({"\u3002": ".", "\uff0e": ".", "\uff61": ".", "\u2024": ".", "\ufe52": "."})
 _HIDDEN = r"[\s\u200b-\u200d\u2060\ufeff]*"
 _FENCED_TAG = re.compile(rf"(?i)<({_HIDDEN}/?{_HIDDEN})(item|feedback)")
+FOREIGN_SCRIPT_SHARE = 0.3
 
 
 def storable(value: str) -> str:
@@ -57,3 +59,13 @@ def fence(value: str) -> str:
     including when spaces or zero-width characters are put inside the tag.
     """
     return _FENCED_TAG.sub(r"&lt;\1\2", value)
+
+
+def foreign_script(title: str | None) -> bool:
+    """True when more than FOREIGN_SCRIPT_SHARE of the title's letters are outside the Latin
+    script, such as Chinese, Japanese, Korean, Cyrillic, Arabic or Devanagari. Languages written
+    in Latin script, such as Portuguese, pass.
+    """
+    letters = [c for c in title or "" if c.isalpha()]
+    foreign = sum(not unicodedata.name(c, "").startswith("LATIN") for c in letters)
+    return foreign > len(letters) * FOREIGN_SCRIPT_SHARE

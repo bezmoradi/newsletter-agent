@@ -14,7 +14,7 @@ from newsletter_agent.http import FetchError, check_url, describe, https
 from newsletter_agent.sources.base import Candidate, Collected, DeadlinePassed, SourceState, past
 from newsletter_agent.sources.feed import parse_date
 from newsletter_agent.text import plain
-from newsletter_agent.urls import MAX_URL_LENGTH, canonical_url, is_web_url
+from newsletter_agent.urls import MAX_URL_LENGTH, canonical_url, domain, is_web_url
 
 if TYPE_CHECKING:
     from newsletter_agent.settings import Settings, SourceConfig
@@ -128,6 +128,7 @@ def search(term: str, days: int, model: str) -> tuple[llm.Structured, list[Candi
                     if isinstance(entry.get("title"), str)
                     else None,
                     published_at=_published(entry.get("published")),
+                    publisher=domain(url),
                 )
             )
     return result, candidates

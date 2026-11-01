@@ -11,22 +11,29 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from newsletter_agent import enrich as enrich_mod
-from newsletter_agent import llm, mail, prompts, store
-from newsletter_agent.settings import MAX_WAIT_DAYS, NewsletterConfig, Settings, SourceConfig
-from newsletter_agent.sources import COLLECTORS
+from newsletter_agent import llm, mail, prompts, store, youtube_auth
+from newsletter_agent.settings import (
+    MAX_WAIT_DAYS,
+    RATING_TYPES,
+    NewsletterConfig,
+    Settings,
+    SourceConfig,
+    YouTubeAccount,
+)
+from newsletter_agent.sources import COLLECTORS, youtube_likes
 from newsletter_agent.sources.base import Collected, DeadlinePassed, SourceState
-from newsletter_agent.text import fence
+from newsletter_agent.text import fence, foreign_script
 from newsletter_agent.urls import MAX_URL_LENGTH, canonical_url, is_web_url, youtube_video_id
 
 log = logging.getLogger(__name__)
 
-SCORE_PROMPT_VERSION = "score_v3"
-DIGEST_PROMPT_VERSION = "digest_v3"
+SCORE_PROMPT_VERSION = "score_v4"
+DIGEST_PROMPT_VERSION = "digest_v4"
 SUMMARY_PROMPT_VERSION = "summary_v1"
 CHECK_PROMPT_VERSION = "check_v1"
 REVISE_PROMPT_VERSION = "revise_v1"
 TRIAGE_PROMPT_VERSION = "triage_v1"
-PROFILE_PROMPT_VERSION = "profile_v1"
+PROFILE_PROMPT_VERSION = "profile_v2"
 TRIAGE_MAX_TITLES = 200
 PROFILE_MIN_RATINGS = 20
 PROFILE_MAX_RATINGS = 100
@@ -38,11 +45,14 @@ RATINGS_PER_SOURCE = 2
 RESCORE_SHARE = 0.1
 NO_RATINGS = "Liked:\n(none yet)\nDisliked:\n(none yet)"
 RATED_TITLE_LENGTH = 200
+RATED_ABOUT_LENGTH = 300
 SCORE_BATCH_CHARS = 200_000
 MAX_TAKEAWAYS = 4
 MAX_MISSING = 3
 MAX_ASSESS_ATTEMPTS = 3
 DIGEST_SOURCE_CAP = 3
+CAP_RETRY_DAYS = 3
+LIKES_DAYS = 30
 DIGEST_POOL = 30
 SENT_TITLE_DAYS = 7
 BELOW_THRESHOLD_DAYS = 7
@@ -256,7 +266,8 @@ def read_ratings(conn: store.Connection, settings: Settings, run: Run) -> None:
 def collect(conn: store.Connection, settings: Settings, run: Run) -> None:
     """Store new items from every enabled source of every newsletter. A failing source, or a
     failure while storing its items, is recorded and skipped; a candidate whose URL is invalid or
-    over 2,000 characters is skipped. On a source's first sight, items older than BACKFILL_DAYS,
+    over 2,000 characters, or whose title is mostly in a non-Latin script, is skipped and not
+    stored. On a source's first sight, items older than BACKFILL_DAYS,
     and every sitemap entry, are stored as baseline; web search results are always new, because
     the search asked only for recent pages. Once Claude has stopped for the run, sources that
     need Claude are skipped.
@@ -266,6 +277,8 @@ def collect(conn: store.Connection, settings: Settings, run: Run) -> None:
             if run.past_deadline():
                 run.degraded = True
                 return
+            if source.type in RATING_TYPES:
+                continue
             if run.claude_stopped and source.type in CLAUDE_SOURCE_TYPES:
                 run.degraded = True
                 continue
@@ -314,6 +327,8 @@ def _collect_source(
         return
     for state_name, count in added.items():
         run.counts[f"items_{state_name}"] += count
+    if skipped["foreign_script"]:
+        run.counts["foreign_script_skipped"] += skipped["foreign_script"]
     log.info(
         "source collected",
         extra={
@@ -322,11 +337,101 @@ def _collect_source(
                 "not_modified": collected.not_modified,
                 "candidates": len(collected.candidates),
                 "new": added["new"],
-                "skipped": skipped,
+                "skipped": skipped["invalid_url"],
+                "foreign_script": skipped["foreign_script"],
                 "first_sight": first_sight,
             }
         },
     )
+
+
+def read_likes(conn: store.Connection, settings: Settings, run: Run) -> None:
+    """Store the owner's YouTube likes of the last LIKES_DAYS days as "More like this" ratings,
+    for each newsletter with a youtube_likes source, so they work with the email ratings in
+    scoring, the digest choice and the profile suggestions. A liked video reuses the item a
+    source already stored, or becomes a baseline item of the likes source; a title with no score
+    yet gets the title pass; a like counts only once its item's score reaches the newsletter's
+    threshold. A failure fails only the likes source.
+    """
+    account = settings.youtube_account
+    if account is None:
+        return
+    for newsletter in settings.newsletters:
+        for source in newsletter.sources:
+            if source.type in RATING_TYPES and not run.past_deadline():
+                _read_likes(conn, settings, run, newsletter, source, account)
+
+
+def _read_likes(
+    conn: store.Connection,
+    settings: Settings,
+    run: Run,
+    newsletter: NewsletterConfig,
+    source: SourceConfig,
+    account: YouTubeAccount,
+) -> None:
+    row = store.sync_source(conn, newsletter.key, source)
+    conn.commit()
+    now = datetime.now(UTC)
+    where = {"newsletter": newsletter.key, "source": source.key}
+    try:
+        client = youtube_auth.Client(account.client_id, account.client_secret)
+        token = youtube_auth.access_token(client, account.refresh_token)
+        likes = youtube_likes.recent(token, now - timedelta(days=LIKES_DAYS), run.deadline)
+        items = [
+            (store.liked_item(conn, newsletter.key, row["id"], like.video, _canonical(like)), like)
+            for like in likes
+            if like.video.title and not foreign_script(like.video.title)
+        ]
+        conn.commit()
+        _title_pass(conn, settings, run, newsletter, source, items)
+        scores = store.item_scores(conn, [item_id for item_id, _ in items])
+        added = sum(
+            store.save_like(conn, item_id, like.video.external_id, like.liked_at)
+            for item_id, like in items
+            if (scores.get(item_id) or 0) >= newsletter.score_threshold
+        )
+        store.record_source_success(
+            conn, row["id"], now=now, etag=None, last_modified=None, new_items=added
+        )
+        conn.commit()
+    except Exception as e:
+        _source_failed(conn, run, row["id"], now, e, where)
+        return
+    run.counts["likes_new"] += added
+    log.info("likes read", extra={"fields": {**where, "liked": len(likes), "new": added}})
+
+
+def _canonical(like: youtube_likes.Like) -> str:
+    return canonical_url(like.video.url)
+
+
+def _title_pass(
+    conn: store.Connection,
+    settings: Settings,
+    run: Run,
+    newsletter: NewsletterConfig,
+    source: SourceConfig,
+    items: list[tuple[int, youtube_likes.Like]],
+) -> None:
+    """Score with the title pass the liked videos that have no score yet, so the threshold can
+    tell which likes are on the newsletter's topics. Once Claude has stopped, they wait for the
+    next run.
+    """
+    scores = store.item_scores(conn, [item_id for item_id, _ in items])
+    rows: list[store.Row] = [
+        {
+            "id": item_id,
+            "title": like.video.title,
+            "source_key": source.key,
+            "published_at": like.video.published_at,
+        }
+        for item_id, like in items
+        if scores.get(item_id) is None
+    ]
+    conn.commit()
+    if rows and not run.claude_stopped:
+        _triage_titles(conn, settings, newsletter, run, rows[:TRIAGE_MAX_TITLES])
 
 
 def _store_candidates(
@@ -338,13 +443,16 @@ def _store_candidates(
     *,
     first_sight: bool,
     now: datetime,
-) -> tuple[Counter[str], int]:
+) -> tuple[Counter[str], Counter[str]]:
     cutoff = now - timedelta(days=settings.backfill_days)
     added: Counter[str] = Counter()
-    skipped = 0
+    skipped: Counter[str] = Counter()
     for candidate in collected.candidates:
         if len(candidate.url) > MAX_URL_LENGTH or not is_web_url(candidate.url):
-            skipped += 1
+            skipped["invalid_url"] += 1
+            continue
+        if foreign_script(candidate.title):
+            skipped["foreign_script"] += 1
             continue
         fresh = collected.recent_only or (
             candidate.published_at is not None and candidate.published_at >= cutoff
@@ -519,8 +627,10 @@ def assess(conn: store.Connection, settings: Settings, run: Run) -> None:
         keys = [s.key for s in newsletter.sources]
         rows = store.items_to_assess(conn, newsletter.key, keys, limit) if limit else []
         used.append(len(rows))
-        ratings = store.recent_ratings(
-            conn, newsletter.key, RATINGS_PROMPT_DAYS, RATINGS_PER_SOURCE, RATINGS_PER_SIDE
+        ratings = _taste(
+            store.recent_ratings(
+                conn, newsletter.key, RATINGS_PROMPT_DAYS, RATINGS_PER_SOURCE, RATINGS_PER_SIDE
+            )
         )
         conn.commit()
         feedback = _feedback_block(ratings)
@@ -571,9 +681,23 @@ def _title_line(title: str, source_key: str | None = None) -> str:
     return prefix + fence(" ".join(title.split())[:RATED_TITLE_LENGTH])
 
 
+def _taste(ratings: list[store.Row]) -> list[store.Row]:
+    """The ratings that say something about taste: a rating of an item whose title is mostly in
+    a foreign script is about its language, which collection already keeps out.
+    """
+    return [r for r in ratings if not foreign_script(r["title"])]
+
+
+def _rating_line(rating: store.Row) -> str:
+    """A rated item's title line, and under it what the item was about, when known."""
+    line = _title_line(rating["title"], rating["source_key"])
+    about = " ".join((rating.get("about") or "").split())[:RATED_ABOUT_LENGTH]
+    return f"{line}\n  About: {fence(about)}" if about else line
+
+
 def _feedback_block(ratings: list[store.Row]) -> str:
     def titles(liked: bool) -> list[str]:
-        found = [_title_line(r["title"], r["source_key"]) for r in ratings if r["liked"] is liked]
+        found = [_rating_line(r) for r in ratings if r["liked"] is liked]
         return found or ["(none yet)"]
 
     return "\n".join(["Liked:", *titles(True), "Disliked:", *titles(False)])
@@ -740,7 +864,7 @@ def _digest_newsletter(
 ) -> None:
     threshold = newsletter.score_threshold
     keys = [s.key for s in newsletter.sources]
-    candidates = store.digest_candidates(conn, newsletter.key, keys, threshold)
+    candidates = store.digest_candidates(conn, newsletter.key, keys, threshold, CAP_RETRY_DAYS)
     below = (
         store.below_threshold(conn, newsletter.key, keys, threshold, BELOW_THRESHOLD_DAYS)
         if settings.is_owner(newsletter)
@@ -781,20 +905,22 @@ def _digest_newsletter(
 def _offer(
     candidates: list[store.Row], max_items: int
 ) -> tuple[list[store.Row], list[tuple[int, str]]]:
-    """The candidates for the digest call, best first: at most DIGEST_SOURCE_CAP from one source
-    and max_items in all. The rest are left out, each with its reason, "source_cap" or "cap", and
-    recorded as offered, so they don't come back the next day.
+    """The candidates for the digest call, best first: at most DIGEST_SOURCE_CAP from one source,
+    or from one website or YouTube channel of a search source, and max_items in all. The rest are
+    left out, each with its reason, SOURCE_CAP or CAP; store.digest_candidates offers them again
+    for CAP_RETRY_DAYS days.
     """
-    per_source: Counter[str] = Counter()
+    per_group: Counter[str] = Counter()
     offered: list[store.Row] = []
     left_out: list[tuple[int, str]] = []
     for row in candidates:
-        if per_source[row["source_key"]] >= DIGEST_SOURCE_CAP:
-            left_out.append((row["id"], "source_cap"))
+        group = f"{row['source_key']} {row['publisher'] or ''}"
+        if per_group[group] >= DIGEST_SOURCE_CAP:
+            left_out.append((row["id"], store.SOURCE_CAP))
         elif len(offered) >= max_items:
-            left_out.append((row["id"], "cap"))
+            left_out.append((row["id"], store.CAP))
         else:
-            per_source[row["source_key"]] += 1
+            per_group[group] += 1
             offered.append(row)
     return offered, left_out
 
@@ -809,7 +935,7 @@ def _entries(
     entries: list[tuple[int, int, bool, str | None]] = [
         (row["id"], position, True, None) for position, row in enumerate(choice.chosen)
     ]
-    unchosen = "cap" if fallback else "not_chosen"
+    unchosen = store.CAP if fallback else "not_chosen"
     for row in pool:
         if row["id"] not in chosen:
             reason = "repeat" if row["id"] in choice.repeats else unchosen
@@ -828,8 +954,10 @@ def _choose(
     scores, beside the owner's recent ratings and the titles sent in the last SENT_TITLE_DAYS
     days. None when Claude can't, so the caller falls back to score order.
     """
-    ratings = store.recent_ratings(
-        conn, newsletter.key, RATINGS_PROMPT_DAYS, RATINGS_PER_SOURCE, RATINGS_PER_SIDE
+    ratings = _taste(
+        store.recent_ratings(
+            conn, newsletter.key, RATINGS_PROMPT_DAYS, RATINGS_PER_SOURCE, RATINGS_PER_SIDE
+        )
     )
     sent = store.sent_titles(conn, newsletter.key, SENT_TITLE_DAYS)
     conn.commit()
@@ -1104,7 +1232,9 @@ def suggest_profile(conn: store.Connection, settings: Settings, run: Run) -> Non
         last = store.last_profile_suggestion(conn, newsletter.key)
         due = last is None or last <= datetime.now(UTC) - PROFILE_EVERY
         ratings = (
-            store.ratings_since(conn, newsletter.key, last, PROFILE_MAX_RATINGS) if due else []
+            _taste(store.ratings_since(conn, newsletter.key, last, PROFILE_MAX_RATINGS))
+            if due
+            else []
         )
         conn.commit()
         if len(ratings) >= PROFILE_MIN_RATINGS:
@@ -1118,10 +1248,7 @@ def _suggest_profile(
     run: Run,
     ratings: list[store.Row],
 ) -> None:
-    lines = [
-        f"{'more' if r['liked'] else 'less'} {_title_line(r['title'], r['source_key'])[2:]}"
-        for r in ratings
-    ]
+    lines = [f"{'more' if r['liked'] else 'less'} {_rating_line(r)[2:]}" for r in ratings]
     prompt = prompts.render(
         PROFILE_PROMPT_VERSION,
         name=newsletter.name,

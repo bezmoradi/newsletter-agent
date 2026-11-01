@@ -85,6 +85,11 @@ queries = [
 ]
 
 [[sources]]
+key = 'youtube-likes'
+name = 'Your YouTube likes'
+type = 'youtube_likes'
+
+[[sources]]
 key = 'simon-willison'
 name = 'Simon Willison'
 type = 'feed'
