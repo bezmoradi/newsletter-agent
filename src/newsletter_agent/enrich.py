@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -13,6 +14,8 @@ from newsletter_agent.extract import decode, extract
 
 MAX_TEXT = 400_000
 TRANSCRIPT_TIMEOUT = 30
+IPV6_CONNECT_TIMEOUT = 5
+IPV6_ONLY = ("::", 0)
 PARSE_DEADLINE = 30
 PAGE_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
 
@@ -23,7 +26,40 @@ class Content:
     title: str | None = None
 
 
+@dataclass
+class _Ipv6:
+    """Whether IPv6 has failed to connect in this process. The first failure sends every later
+    transcript of the run straight to the default connection, so a machine without IPv6 waits
+    only once.
+    """
+
+    failed: bool = False
+
+
+_ipv6 = _Ipv6()
+
+
 class _TimeoutAdapter(HTTPAdapter):
+    """Applies the transcript timeout to every request, and binds each connection to
+    source_address when one is given; binding to IPV6_ONLY lets only IPv6 addresses connect.
+    """
+
+    def __init__(
+        self,
+        source_address: tuple[str, int] | None = None,
+        connect_timeout: float = TRANSCRIPT_TIMEOUT,
+    ) -> None:
+        self._source_address = source_address
+        self._connect_timeout = connect_timeout
+        super().__init__()
+
+    def init_poolmanager(
+        self, connections: int, maxsize: int, block: bool = False, **pool_kwargs: Any
+    ) -> None:
+        if self._source_address is not None:
+            pool_kwargs["source_address"] = self._source_address
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
+
     def send(
         self,
         request: requests.PreparedRequest,
@@ -36,7 +72,7 @@ class _TimeoutAdapter(HTTPAdapter):
         return super().send(
             request,
             stream=stream,
-            timeout=timeout or TRANSCRIPT_TIMEOUT,
+            timeout=timeout or (self._connect_timeout, TRANSCRIPT_TIMEOUT),
             verify=verify,
             cert=cert,
             proxies=proxies,
@@ -44,14 +80,27 @@ class _TimeoutAdapter(HTTPAdapter):
 
 
 def transcript(video_id: str) -> Content:
-    """The English transcript, with a 30-second timeout per request. Raises when there is none."""
+    """The English transcript, with a 30-second timeout per request. It's fetched over IPv6
+    first, because YouTube blocks some home IPv4 addresses that it serves over IPv6, and a
+    container whose IPv6 address is private would otherwise choose IPv4. When IPv6 can't connect
+    within 5 seconds, it's fetched over the default connection, for the rest of the run too.
+    Raises when there is none.
+    """
+    if not _ipv6.failed:
+        try:
+            text = _fetch_transcript(video_id, _TimeoutAdapter(IPV6_ONLY, IPV6_CONNECT_TIMEOUT))
+            return Content(text=_storable(text, MAX_TEXT))
+        except requests.ConnectionError:
+            _ipv6.failed = True
+    return Content(text=_storable(_fetch_transcript(video_id, _TimeoutAdapter()), MAX_TEXT))
+
+
+def _fetch_transcript(video_id: str, adapter: _TimeoutAdapter) -> str:
     with requests.Session() as session:
-        adapter = _TimeoutAdapter()
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         fetched = YouTubeTranscriptApi(http_client=session).fetch(video_id, languages=["en"])
-        text = " ".join(snippet.text for snippet in fetched).strip()
-    return Content(text=_storable(text, MAX_TEXT))
+        return " ".join(snippet.text for snippet in fetched).strip()
 
 
 def article(url: str) -> Content:
