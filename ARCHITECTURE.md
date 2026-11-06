@@ -1122,6 +1122,19 @@ The project has no unit or integration tests, by the owner's rule. On 2026-10-30
 - **Transcript pacing (REQ-97, issue #39), on the Mac without Docker, 2026-11-01.** `steps.enrich` against a throwaway Postgres 18 with TLS, on video items seeded with title scores:
   - **Real YouTube,** which was refusing the network: of 3 videos, it requested only the one with the best title score, got `IpBlocked`, and recorded the other 2 as `TranscriptSkipped` without a request; one refused request in all.
   - **With the transcript call replaced by a stub** and the limits lowered to 3 a run and 2 seconds: 5 videos scored 9, 8, 7, 3 and none gave 3 requests, for 9, 8 and 7 in that order, 2.01 seconds apart, and the other 2 `TranscriptSkipped`; a refusal on the second request left the rest unrequested; with the deadline 1 second away and a 5-second pause, the pause ended at the deadline and the step stopped, leaving the remaining items `new` for the next run.
+- **The profile edit from your ratings (issue #41), on the Mac without Docker, 2026-11-06.** The profile suggestions of 2026-11-05 (REQ-83), from your latest 21 ratings, proposed three edits: a topic on human review and oversight of agent output, practitioners' talks welcomed even with little code, and vendor framing no longer a reason to mark an item down, with benchmark-centered vendor posts ranked lower. All three went into `interests.md`, the new topic as topic 7. With your go-ahead, 41 items were exported read-only from the server's database, with their stored texts: your 20 likes and 1 dislike, leaving out the Japanese video your other dislike was about, and every fifth item run 9 scored. They were scored once with each profile, without ratings, on Opus 5.5 at high effort, for $2.82:
+
+  | Measure | Old profile | New profile |
+  |---|---|---|
+  | Your 20 likes: mean score | 7.05 | 7.45 |
+  | Your likes at 8 or more | 5 | 10 |
+  | Your likes moved up, down | | 8, 0 |
+  | Run 9's 20 items: mean score | 4.65 | 4.85 |
+  | Run 9's items at 6 or more | 8 | 8 |
+  | A like scored above one of run 9's items | 0.84 | 0.85 |
+  | Droid 1.0, your dislike | 9 | 9 |
+
+  Every change was one point up. The likes that rose are the ones the edit names: the talks on the pull-request bottleneck, the death of code review, factory engineering, building a software factory and its resilience, plus a study of how coding agents fail their users, a talk on what sets agents apart, and a factory shipping hundreds of pull requests a week. Of run 9's items, four rose by one, on agents as code reviewers, software factories and what works in agentic coding, and the share at 6 or more didn't change, so the threshold won't let noticeably more through. The new preference didn't lower the Droid post, which still scores 9 on its harness content: the dislike is still better carried by the rating itself. Caveats: one run of each profile, where the gap between two runs of one profile was 0.06 to 0.11 on 2026-11-01; and 11 of the likes are videos without a stored transcript, scored on their titles and descriptions.
 
 Not verified yet:
 
