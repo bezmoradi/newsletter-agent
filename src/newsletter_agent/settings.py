@@ -31,6 +31,7 @@ YOUTUBE_ACCOUNT_VARS = SECRET_VARS[-3:]
 RECIPIENT_PREFIX = "DIGEST_TO_"
 TOKEN_LIFETIME_DAYS = 365
 MAX_WAIT_DAYS = 7
+MAX_SEARCH_AGE_DAYS = MAX_WAIT_DAYS - 2
 DEFAULT_MODEL = "claude-opus-5-5"
 NEWSLETTERS_DIR = "newsletters"
 NEWSLETTER_FILE = "newsletter.toml"
@@ -119,6 +120,9 @@ class Settings:
     digest_max_items: int
     backfill_days: int
     youtube_search_max_queries: int
+    youtube_search_min_age_days: int
+    youtube_search_min_likes: int
+    youtube_search_min_comments: int
     web_search_max_queries: int
     transcripts_enabled: bool
     token_created: date
@@ -220,6 +224,11 @@ def load_settings(
         digest_max_items=_int(environ, "DIGEST_MAX_ITEMS", 8, low=1),
         backfill_days=_int(environ, "BACKFILL_DAYS", 7, low=0, high=MAX_WAIT_DAYS),
         youtube_search_max_queries=youtube_cap,
+        youtube_search_min_age_days=_int(
+            environ, "YOUTUBE_SEARCH_MIN_AGE_DAYS", 4, low=0, high=MAX_SEARCH_AGE_DAYS
+        ),
+        youtube_search_min_likes=_int(environ, "YOUTUBE_SEARCH_MIN_LIKES", 50, low=0),
+        youtube_search_min_comments=_int(environ, "YOUTUBE_SEARCH_MIN_COMMENTS", 5, low=0),
         web_search_max_queries=web_cap,
         transcripts_enabled=_bool(environ, "TRANSCRIPTS_ENABLED", True),
         token_created=_date(environ, "TOKEN_CREATED", date(2026, 10, 30)),
