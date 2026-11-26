@@ -109,7 +109,7 @@ Each source has:
 | `feed` | `url` of an RSS or Atom feed, and an optional `include`, a list of regular expressions for the URL paths to keep |
 | `sitemap` | `url` of a sitemap, and `include`, a list of regular expressions for the URL paths to keep |
 | `youtube` | `channel_id`. The channel's Shorts are skipped |
-| `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. Videos of 3 minutes or less, every Short among them, are skipped. |
+| `youtube_search` | `queries`, the search terms. All newsletters' terms together can't exceed `YOUTUBE_SEARCH_MAX_QUERIES`, because Google's daily search quota belongs to your API key. Videos of 3 minutes or less, every Short among them, are skipped. Only videos at least `YOUTUBE_SEARCH_MIN_AGE_DAYS` old are searched, and a video is kept only with at least `YOUTUBE_SEARCH_MIN_LIKES` likes or `YOUTUBE_SEARCH_MIN_COMMENTS` comments |
 | `youtube_likes` | None. Your likes on YouTube from the last 30 days become "More like this" ratings, once Claude's quick title check scores them at or above the newsletter's threshold; a title mostly in a non-Latin script is left out. The liked videos are never sent in a digest, since you've seen them. Allowed only in a newsletter sent to `SMTP_USERNAME`, at most one per newsletter, and only with the sign-in of [YouTube likes](#youtube-likes-optional) |
 | `web_search` | `queries`, the search terms. Claude searches the web for each term with its `WebSearch` tool, its only tool, and returns recent links; no other key is needed. All newsletters' terms together can't exceed `WEB_SEARCH_MAX_QUERIES`, because every search uses your Claude plan. |
 
@@ -144,6 +144,8 @@ Only `feed` and `sitemap` sources take `include`; on any other type the configur
 | `SCORE_BATCH_SIZE` | `20` | The most items per scoring call. A call also holds at most 200,000 characters of text, and a longer item gets a call of its own |
 | `BACKFILL_DAYS` | `7` | How far back a new feed's items count as new. It can be at most 7, because items still waiting after 7 days are dropped from the queue |
 | `YOUTUBE_SEARCH_MAX_QUERIES` | `10` | The most search terms across all newsletters, which is one search call each per run; the API allows 100 a day |
+| `YOUTUBE_SEARCH_MIN_AGE_DAYS` | `4` | How old, in days, a video must be before YouTube search looks for it, so its likes and comments mean something. At most 5, so a video keeps 2 days before the queue drops it. `0` searches new videos, as before |
+| `YOUTUBE_SEARCH_MIN_LIKES`, `YOUTUBE_SEARCH_MIN_COMMENTS` | `50`, `5` | A video YouTube search finds is skipped when it has fewer likes than the one and fewer comments than the other, read once, when it is found. A count the channel hides counts as reached. Each skipped video is logged, as `unpopular video skipped`, with its counts. `0` for both keeps every video |
 | `WEB_SEARCH_MAX_QUERIES` | `10` | The most web search terms across all newsletters, at most 50. Each is one Claude session per run, with up to 3 searches |
 | `TRANSCRIPTS_ENABLED` | `true` | Set `false` to stop fetching YouTube transcripts |
 | `TOKEN_CREATED` | `2026-10-30` | When the Claude token was made; used for the expiry warning |
