@@ -360,6 +360,7 @@ The README lists every variable and its default. The values that came from decis
 - `SCORE_THRESHOLD` 6, on the 0–10 scale. This value was proposed, and is to be tuned;
 - `TRANSCRIPTS_ENABLED` (REQ-15);
 - `YOUTUBE_SEARCH_MAX_QUERIES` 10. The API allows 100 `search.list` calls a day;
+- `YOUTUBE_SEARCH_MIN_AGE_DAYS` 4, at most `settings.MAX_SEARCH_AGE_DAYS`, 5, so a stored video keeps 2 of the 7 days before it expires (REQ-74); `YOUTUBE_SEARCH_MIN_LIKES` 50 and `YOUTUBE_SEARCH_MIN_COMMENTS` 5 (REQ-98). All three were proposed for a trial, and are to be tuned; `0` turns each off;
 - `WEB_SEARCH_MAX_QUERIES` 10, at most 50. Each term is one Claude session a run, with up to 3 searches, and all of it uses your plan's limits.
 
 `load_settings` reads every folder under `config/newsletters/` into a `NewsletterConfig`: its key, name, recipient, score threshold, sources and interest profile.
