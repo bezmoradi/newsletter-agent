@@ -89,7 +89,7 @@ def collect(
                 search_terms=(query,),
                 publisher=channel_id if is_channel_id(channel_id) else None,
             )
-    kept = _kept(list(found), settings, deadline)
+    kept = _kept(list(found), settings.youtube_api_key, settings, deadline)
     return Collected(
         candidates=tuple(c for video_id, c in found.items() if video_id in kept),
         last_modified=_stamp(until),
@@ -118,7 +118,7 @@ def _found_by(candidate: Candidate, term: str) -> Candidate:
     return replace(candidate, search_terms=(*candidate.search_terms, term))
 
 
-def _kept(video_ids: list[str], settings: Settings, deadline: float) -> set[str]:
+def _kept(video_ids: list[str], api_key: str, settings: Settings, deadline: float) -> set[str]:
     """The IDs among video_ids of videos longer than MAX_SHORT that reach the likes bar or the
     comments bar; a count YouTube doesn't return counts as reaching its bar. A video that
     videos.list doesn't return, or whose length doesn't parse, is left out. Each video dropped
@@ -136,7 +136,7 @@ def _kept(video_ids: list[str], settings: Settings, deadline: float) -> set[str]
                 "id": ",".join(video_ids[start : start + VIDEOS_PER_CALL]),
                 "maxResults": VIDEOS_PER_CALL,
             },
-            headers={"X-Goog-Api-Key": settings.youtube_api_key},
+            headers={"X-Goog-Api-Key": api_key},
         )
         for entry in json.loads(response.body).get("items", []):
             video_id = entry.get("id")
